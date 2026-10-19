@@ -1,0 +1,39 @@
+# 版本控制与 CI 元数据
+.git
+.github
+.gitignore
+
+# 分析产物（含真实日记与隐私数据，严禁进入镜像）
+output
+
+# 第三方参考源码（体积大，仅本地学习用，各有独立 license）
+reference-projects
+
+# 本地工具目录
+.workbuddy
+.codebuddy
+.vscode
+.idea
+
+# Python 缓存与虚拟环境
+**/__pycache__
+**/*.py[cod]
+.venv
+venv
+env
+ENV
+
+# 环境变量与密钥
+.env
+.env.*
+*.local
+secrets.*
+
+# 系统与日志
+.DS_Store
+Thumbs.db
+desktop.ini
+*.log
+
+# 构建中间产物
+dist
