@@ -1,0 +1,43 @@
+{
+  "version": 1,
+  "note": "机器可读的校验 schema——深度阈值与要点清单的单一事实源。validate.py 读本文件替代硬编码。方法论描述见 methodology/depth.md（人读），本文件是其机器可读镜像。",
+  "depth": {
+    "single": {
+      "summary": {"min_zh_chars": 1200, "note": "四点缺一不可，见 methodology/depth.md"},
+      "mirror_dialogue": {"min_zh_chars": 500, "note": "六要素全覆盖为主，字数兜底"},
+      "quotes": {"min_count": 5, "require_interpretation": true},
+      "quote_analysis": {"min_zh_chars": 300},
+      "emotion_turning_points": {"min_zh_chars": 300},
+      "required_mirror_fields": [
+        "addressee", "pronoun_map", "self_naming_change", "self_talk", "unsaid"
+      ]
+    },
+    "discipline": {
+      "analysis": {"min_zh_chars": 1500},
+      "counter_evidence": {"min_zh_chars": 300},
+      "methods": {"min_zh_chars": 200},
+      "eight_elements": [
+        "core_questions", "concepts", "methods", "evidence", "analysis",
+        "counter_evidence", "confidence", "references"
+      ]
+    },
+    "global": {
+      "key_findings": {"min_count": 10, "target": 15},
+      "mirror_dialogue_chapter": {
+        "min_zh_chars": 1500,
+        "required_parts": [
+          "addressee_spectrum", "self_naming_timeline",
+          "self_talk_patterns", "silence_archaeology", "dialogue_ethics"
+        ]
+      }
+    },
+    "cross": {
+      "multi_explanations": {"min_count": 8},
+      "required_fields": ["complementary", "limitations_ethics"],
+      "min_list": {"consensus": 1, "further_questions": 1}
+    }
+  },
+  "discipline_evidence": {
+    "min_evidence_per_core": 3
+  }
+}

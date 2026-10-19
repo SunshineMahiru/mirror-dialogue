@@ -1,0 +1,674 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>随笔/日记镜面对话 + 多学科透镜分析报告</title>
+  <style>
+    :root {
+      --bg: #f7f6f2;
+      --card: #ffffff;
+      --ink: #2b2b2b;
+      --muted: #6b6b6b;
+      --accent: #8a6d3b;
+      --line: #e6e2d8;
+      --code-bg: #f1efe9;
+      --blockquote-bg: #faf7ef;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      font-family: "Noto Serif SC", "Songti SC", "SimSun", Georgia, serif;
+      background: var(--bg);
+      color: var(--ink);
+      line-height: 1.75;
+    }
+    .wrap { max-width: 960px; margin: 0 auto; padding: 24px 20px 80px; }
+    header.hero {
+      background: linear-gradient(135deg, #3a3328, #8a6d3b);
+      color: #fff; border-radius: 12px; padding: 32px 28px; margin-bottom: 24px;
+    }
+    header.hero h1 { margin: 0 0 8px; font-size: 26px; }
+    header.hero .meta { opacity: .85; font-size: 14px; }
+    nav.toc {
+      background: var(--card); border: 1px solid var(--line);
+      border-radius: 10px; padding: 16px 20px; margin-bottom: 24px;
+    }
+    nav.toc h2 { margin: 0 0 8px; font-size: 16px; }
+    nav.toc ol { margin: 0; padding-left: 20px; columns: 2; column-gap: 32px; }
+    nav.toc a { color: var(--accent); text-decoration: none; }
+    nav.toc a:hover { text-decoration: underline; }
+    section { margin-bottom: 28px; }
+    .card {
+      background: var(--card); border: 1px solid var(--line);
+      border-radius: 10px; padding: 20px 22px;
+    }
+    .appendix-marker { color: var(--muted); font-size: 12px; font-weight: 400; }
+    h2 { font-size: 20px; border-left: 4px solid var(--accent); padding-left: 10px; margin: 24px 0 14px; }
+    h3 { font-size: 16px; margin: 18px 0 8px; }
+    h4 { font-size: 14px; margin: 14px 0 6px; color: var(--accent); }
+    table { width: 100%; border-collapse: collapse; margin: 12px 0; font-size: 14px; }
+    th, td { border: 1px solid var(--line); padding: 8px 10px; text-align: left; vertical-align: top; }
+    th { background: #f0ece2; }
+    blockquote {
+      margin: 10px 0; padding: 10px 14px; border-left: 3px solid var(--accent);
+      background: var(--blockquote-bg); font-style: normal; border-radius: 0 6px 6px 0;
+    }
+    blockquote .src { display: block; font-size: 12px; color: var(--muted); margin-top: 4px; }
+    .prose { white-space: pre-line; }
+    .badge { display: inline-block; padding: 2px 8px; border-radius: 12px; font-size: 12px; }
+    .badge.core { background: #8a6d3b; color: #fff; }
+    .badge.secondary { background: #d9cba8; color: #4a3a1a; }
+    .badge.excluded { background: #e8e4da; color: #777; }
+    .badge.high { background: #2f6b4f; color: #fff; }
+    .badge.mid { background: #b38a2f; color: #fff; }
+    .badge.low { background: #b05757; color: #fff; }
+    .summary-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 12px; }
+    .summary-item { background: #faf8f2; border: 1px solid var(--line); border-radius: 8px; padding: 12px; text-align: center; }
+    .summary-item .num { font-size: 24px; font-weight: 600; color: var(--accent); }
+    .summary-item .lbl { font-size: 13px; color: var(--muted); }
+    .file-block, .discipline-block {
+      border: 1px solid var(--line); border-radius: 10px; padding: 18px 20px;
+      margin: 16px 0; background: var(--card);
+    }
+    .file-block > h3, .discipline-block > h3 { margin-top: 0; }
+    details { border: 1px solid var(--line); border-radius: 8px; margin: 8px 0; background: var(--card); }
+    details summary { cursor: pointer; padding: 12px 14px; font-weight: 600; }
+    details[open] summary { border-bottom: 1px solid var(--line); }
+    details .body { padding: 12px 16px; }
+    code, pre { background: var(--code-bg); border-radius: 6px; }
+    pre { padding: 12px; overflow-x: auto; }
+    .note { font-size: 13px; color: var(--muted); }
+    .tag { color: var(--muted); font-size: 12px; }
+    .kv { margin: 6px 0; }
+    .kv .k { font-weight: 600; }
+    footer { text-align: center; color: var(--muted); font-size: 13px; margin-top: 32px; }
+    .draft-banner {
+      background: #fdeaea; border: 1px solid #e5534b; color: #b02a20;
+      border-radius: 8px; padding: 14px 18px; margin-bottom: 20px;
+    }
+    .draft-banner .title { font-weight: 700; }
+    .draft-banner ul { margin: 8px 0 0; padding-left: 20px; font-size: 13px; }
+    @media print { body { background: #fff; } .card, details, .file-block, .discipline-block { border-color: #ccc; } }
+  </style>
+</head>
+<body>
+<div class="wrap">
+  <header class="hero">
+    <h1>随笔/日记镜面对话 + 多学科透镜分析报告</h1>
+    <div class="meta">
+      生成时间：{{ generated_at or "—" }} ·
+      分析者：mirror-dialogue ·
+      校验状态：{{ validation_status or "未校验" }}
+    </div>
+  </header>
+
+  {% if is_draft %}
+  <div class="draft-banner">
+    <div class="title">⚠ 不合格草稿（--force 强制渲染）</div>
+    <div>以下 fail 未通过事前闸门，内容待修复后再重跑：</div>
+    <ul>{% for f in draft_failures %}<li>{{ f }}</li>{% endfor %}</ul>
+  </div>
+  {% endif %}
+
+  <nav class="toc">
+    <h2>目录</h2>
+    <ol>
+      <li><a href="#summary">摘要</a></li>
+      <li><a href="#per-file">逐篇深度分析</a></li>
+      <li><a href="#mirror-dialogue">镜面对话专章</a></li>
+      <li><a href="#discipline-analysis">多学科深度剖析</a></li>
+      <li><a href="#cross-discipline">跨学科综合</a></li>
+      <li><a href="#global">全局综合</a></li>
+      <li><a href="#conclusion">结语与总评</a></li>
+      <li><a href="#stats">附录·基础统计</a></li>
+      <li><a href="#keywords">附录·关键词与词频</a></li>
+      <li><a href="#quotes">附录·引用分析</a></li>
+      <li><a href="#references">附录·参考文献</a></li>
+      <li><a href="#appendix">附录·方法/隐私/不确定性</a></li>
+    </ol>
+  </nav>
+
+  <!-- ============ 1. 摘要 ============ -->
+  <section id="summary" class="card">
+    <h2>摘要</h2>
+    <div class="summary-grid">
+      {% if stats and stats.global %}
+      <div class="summary-item"><div class="num">{{ stats.global.total_files }}</div><div class="lbl">文件数</div></div>
+      <div class="summary-item"><div class="num">{{ stats.global.total_chinese_chars }}</div><div class="lbl">总中文字符</div></div>
+      <div class="summary-item"><div class="num">{{ stats.global.total_paragraphs }}</div><div class="lbl">总段落</div></div>
+      <div class="summary-item"><div class="num">{{ stats.global.total_sentences }}</div><div class="lbl">总句子</div></div>
+      {% endif %}
+      {% if quotes %}
+      <div class="summary-item"><div class="num">{{ quotes.total_quotes }}</div><div class="lbl">引用数（去噪后）</div></div>
+      {% if quotes.total_emphasis_quotes is defined %}
+      <div class="summary-item"><div class="num">{{ quotes.total_emphasis_quotes }}</div><div class="lbl">强调引号（不计入引用）</div></div>
+      {% endif %}
+      {% endif %}
+      {% if timeline and timeline.date_range %}
+      <div class="summary-item"><div class="num" style="font-size:15px">{{ timeline.date_range | join(' ~ ') }}</div><div class="lbl">时间范围</div></div>
+      {% endif %}
+    </div>
+    {% if global and global.summary %}
+    <div class="prose">{{ global.summary }}</div>
+    {% endif %}
+  </section>
+
+  <!-- ============ 2. 逐篇深度分析（主体） ============ -->
+  <section id="per-file">
+    <h2>逐篇深度分析</h2>
+    {% if single %}
+      {% for a in single %}
+      <div class="file-block">
+        <h3>{{ a.title or a.file }}</h3>
+        {% if a.date_guess %}<p class="note">推测日期：{{ a.date_guess }}</p>{% endif %}
+        {% if a.summary %}
+        <h4>主题与思想主旨</h4>
+        <div class="prose">{{ a.summary }}</div>
+        {% endif %}
+        {% if a.themes %}<p class="kv"><span class="k">主题标签：</span>{{ a.themes | join('、') }}</p>{% endif %}
+
+        {% if a.style %}
+        <h4>语言风格</h4>
+        <p class="prose">
+          {% if a.style.narrative %}叙事类型：{{ a.style.narrative }}；{% endif %}
+          {% if a.style.person %}人称：{{ a.style.person }}；{% endif %}
+          {% if a.style.tense %}时态：{{ a.style.tense }}；{% endif %}
+          {% if a.style.syntax %}句法：{{ a.style.syntax }}；{% endif %}
+          {% if a.style.punctuation %}标点：{{ a.style.punctuation }}；{% endif %}
+          {% if a.style.rhetoric %}修辞：{{ a.style.rhetoric }}{% endif %}
+        </p>
+        {% endif %}
+
+        {% if a.emotion %}
+        <h4>情感基调</h4>
+        {% if a.emotion.tone %}<p><span class="k">基调：</span>{{ a.emotion.tone }}</p>{% endif %}
+        {% if a.emotion.curve %}
+        <ul>
+          {% for c in a.emotion.curve %}
+          <li>{{ c.point }}：{{ c.tone }}{% if c.position %}（{{ c.position }}）{% endif %}</li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+        {% endif %}
+        {% if a.emotion_turning_points %}
+        <h4>情绪转折点</h4>
+        <div class="prose">{{ a.emotion_turning_points }}</div>
+        {% endif %}
+
+        {% if a.mirror_dialogue %}
+        <h4>镜面对话</h4>
+        {% if a.mirror_dialogue.addressee %}
+        <p class="kv"><span class="k">对话对象：</span>{{ a.mirror_dialogue.addressee }}</p>
+        {% endif %}
+        {% if a.mirror_dialogue.addressee_trajectory %}
+        <p class="kv"><span class="k">对话对象移动轨迹：</span>{{ a.mirror_dialogue.addressee_trajectory }}</p>
+        {% endif %}
+        {% if a.mirror_dialogue.pronoun_map %}
+        <p class="k">代词指认：</p>
+        <ul>
+          {% for p in a.mirror_dialogue.pronoun_map %}
+          <li>「{{ p.pronoun }}」指 {{ p.referent }} —— “{{ p.example }}”{% if p.position %}（{{ p.position }}）{% endif %}</li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+        {% if a.mirror_dialogue.self_naming_change %}
+        <p class="k">自我称谓变化：</p>
+        <ul>
+          {% for c in a.mirror_dialogue.self_naming_change %}
+          <li>「{{ c.from }}」→「{{ c.to }}」：{{ c.meaning }} —— “{{ c.example }}”{% if c.position %}（{{ c.position }}）{% endif %}</li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+        {% if a.mirror_dialogue.self_talk %}
+        <p class="k">自我对话模式：</p>
+        <ul>
+          {% for s in a.mirror_dialogue.self_talk %}
+          <li><strong>{{ s.type }}</strong>：{{ s.scene }} —— “{{ s.example }}”{% if s.position %}（{{ s.position }}）{% endif %}</li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+        {% if a.mirror_dialogue.unsaid %}
+        <p class="kv"><span class="k">未说出口的话：</span></p>
+        <div class="prose">{{ a.mirror_dialogue.unsaid }}</div>
+        {% endif %}
+        {% if a.mirror_dialogue.conflicts %}
+        <p class="kv"><span class="k">内在冲突：</span>{{ a.mirror_dialogue.conflicts | join('；') }}</p>
+        {% endif %}
+        {% if a.mirror_dialogue.responses %}
+        <p class="kv"><span class="k">回应模式：</span>{{ a.mirror_dialogue.responses | join('；') }}</p>
+        {% endif %}
+        {% endif %}
+
+        {% if a.quote_analysis %}
+        <h4>引用分析</h4>
+        <div class="prose">{{ a.quote_analysis }}</div>
+        {% endif %}
+
+        {% if a.quotes %}
+        <h4>原文引用</h4>
+        {% for q in a.quotes %}
+        <blockquote>{{ q.text }}<span class="src">—— {{ a.file }} · {{ q.position }}{% if q.source_guess %} · 来源：{{ q.source_guess }}{% endif %}{% if q.function %} · 功能：{{ q.function }}{% endif %}</span>
+        {% if q.interpretation or q.explanation %}<div class="prose note">解读：{{ q.interpretation or q.explanation }}</div>{% endif %}
+        </blockquote>
+        {% endfor %}
+        {% endif %}
+
+        {% if a.uncertainty %}
+        <h4>不确定性</h4>
+        <ul class="note">{% for u in a.uncertainty %}<li>{{ u }}</li>{% endfor %}</ul>
+        {% endif %}
+      </div>
+      {% endfor %}
+    {% else %}
+      <p class="note">暂无单篇分析数据（single_analysis.json）</p>
+    {% endif %}
+  </section>
+
+  <!-- ============ 3. 镜面对话专章 ============ -->
+  <section id="mirror-dialogue" class="card">
+    <h2>镜面对话专章</h2>
+    {% if global and global.mirror_dialogue_chapter %}
+      {% set mdc = global.mirror_dialogue_chapter %}
+      {% if mdc.addressee_spectrum %}
+      <h3>对话对象谱系</h3>
+      <table>
+        <thead><tr><th>对话对象</th><th>频次</th><th>情感强度</th><th>证据</th></tr></thead>
+        <tbody>
+        {% for a in mdc.addressee_spectrum %}
+          <tr><td>{{ a.addressee }}</td><td>{{ a.frequency }}</td><td>{{ a.intensity }}</td><td>{{ a.evidence }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% endif %}
+      {% if mdc.self_naming_timeline %}
+      <h3>自我称谓变化时间线</h3>
+      <ol>
+        {% for t in mdc.self_naming_timeline %}
+        <li><strong>{{ t.file or t.stage }}</strong>：{{ t.stage }} —— {{ t.description }}<div class="note">{{ t.evidence }}</div></li>
+        {% endfor %}
+      </ol>
+      {% endif %}
+      {% if mdc.self_talk_patterns %}
+      <h3>自我对话模式（审判 / 安抚 / 追问）</h3>
+      {% if mdc.self_talk_patterns.judgment %}<p><strong>审判：</strong>{{ mdc.self_talk_patterns.judgment | join('；') }}</p>{% endif %}
+      {% if mdc.self_talk_patterns.comfort %}<p><strong>安抚：</strong>{{ mdc.self_talk_patterns.comfort | join('；') }}</p>{% endif %}
+      {% if mdc.self_talk_patterns.inquiry %}<p><strong>追问：</strong>{{ mdc.self_talk_patterns.inquiry | join('；') }}</p>{% endif %}
+      {% if mdc.self_talk_patterns.alternation %}<p><strong>交替规律：</strong>{{ mdc.self_talk_patterns.alternation }}</p>{% endif %}
+      {% endif %}
+      {% if mdc.silence_archaeology %}
+      <h3>未说出口的话（沉默考古）</h3>
+      <ul>
+        {% for s in mdc.silence_archaeology %}
+        <li><strong>{{ s.cue }}</strong>{% if s.location %}（{{ s.location }}）{% endif %}：{{ s.unsaid }}</li>
+        {% endfor %}
+      </ul>
+      {% endif %}
+      {% if mdc.dialogue_ethics %}
+      <h3>对话伦理：如何对待"他者"作为对话者</h3>
+      <div class="prose">{{ mdc.dialogue_ethics }}</div>
+      {% endif %}
+    {% else %}
+      <p class="note">暂无镜面对话专章数据（global_analysis.mirror_dialogue_chapter 缺失）。
+        逐篇镜面对话见上方「逐篇深度分析」各篇的小节。</p>
+    {% endif %}
+  </section>
+
+  <!-- ============ 4. 多学科深度剖析（主体） ============ -->
+  <section id="discipline-analysis">
+    <h2>多学科深度剖析</h2>
+    {% if discipline_plan %}
+    <div class="card">
+      <p><strong>核心透镜：</strong>{% for did in discipline_plan.core_disciplines %}<span class="badge core">{{ did }}</span> {% endfor %}</p>
+      <p><strong>辅助透镜：</strong>{% for did in discipline_plan.secondary_disciplines %}<span class="badge secondary">{{ did }}</span> {% endfor %}</p>
+      <p><strong>低相关（未启用）：</strong>{% for did in discipline_plan.excluded_disciplines %}<span class="badge excluded">{{ did }}</span> {% endfor %}</p>
+    </div>
+    {% endif %}
+    {% if discipline %}
+      {% for d in discipline %}
+      <div class="discipline-block">
+        <h3>{{ d.name or d.discipline }}
+          {% if d.confidence %}
+          <span class="badge {{ 'high' if d.confidence == '高' else ('mid' if d.confidence == '中' else 'low') }}">{{ d.confidence }}</span>
+          {% endif %}
+        </h3>
+        {% if d.core_questions %}
+        <h4>核心问题</h4>
+        <ul>{% for q in d.core_questions %}<li>{{ q }}</li>{% endfor %}</ul>
+        {% endif %}
+        {% if d.concepts %}
+        <h4>关键概念</h4>
+        <ul>
+          {% for c in d.concepts %}
+          <li><strong>{{ c.name }}</strong>：{{ c.explanation }}{% if c.source %}（来源：{{ c.source }}）{% endif %}</li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+        {% if d.methods %}
+        <h4>方法</h4>
+        {% if d.methods is string %}
+        <div class="prose">{{ d.methods }}</div>
+        {% else %}
+        <ul>{% for m in d.methods %}<li>{{ m }}</li>{% endfor %}</ul>
+        {% endif %}
+        {% endif %}
+        {% if d.evidence %}
+        <h4>原文证据</h4>
+        {% for e in d.evidence %}
+        <blockquote>{{ e.quote }}<span class="src">—— {{ e.file }} · {{ e.position }}</span>
+        {% if e.interpretation %}<div class="prose note">解读：{{ e.interpretation }}</div>{% endif %}
+        </blockquote>
+        {% endfor %}
+        {% endif %}
+        {% if d.analysis %}
+        <h4>解释（analysis）</h4>
+        <div class="prose">{{ d.analysis }}</div>
+        {% endif %}
+        {% if d.counter_evidence %}
+        <h4>反证 / 替代解释（counter_evidence）</h4>
+        {% if d.counter_evidence is string %}
+        <div class="prose">{{ d.counter_evidence }}</div>
+        {% else %}
+        <ul>{% for c in d.counter_evidence %}<li>{{ c }}</li>{% endfor %}</ul>
+        {% endif %}
+        {% endif %}
+        {% if d.alternative_explanations %}
+        <h4>其他替代解释</h4>
+        <ul>{% for x in d.alternative_explanations %}<li>{{ x }}</li>{% endfor %}</ul>
+        {% endif %}
+        {% if d.limitations %}
+        <h4>局限</h4>
+        <ul class="note">{% for l in d.limitations %}<li>{{ l }}</li>{% endfor %}</ul>
+        {% endif %}
+        {% if d.references %}
+        <h4>参考文献</h4>
+        <ul>
+          {% for r in d.references %}
+          <li>{{ r.author }}《{{ r.title }}》({{ r.year }}) {{ r.page_or_url }}
+            {% if not r.verified %}<span class="tag">[未检索，需核验]</span>{% endif %}</li>
+          {% endfor %}
+        </ul>
+        {% endif %}
+      </div>
+      {% endfor %}
+    {% else %}
+      <p class="note">暂无学科分析数据（discipline_analysis.json）</p>
+    {% endif %}
+  </section>
+
+  <!-- ============ 5. 跨学科综合 ============ -->
+  <section id="cross-discipline" class="card">
+    <h2>跨学科综合</h2>
+    {% if cross %}
+      {% if cross.consensus %}<h3>共识</h3><ul>{% for x in cross.consensus %}<li>{{ x }}</li>{% endfor %}</ul>{% endif %}
+      {% if cross.disagreement %}
+      <h3>分歧</h3>
+      <ul>
+        {% for x in cross.disagreement %}
+          {% if x is mapping %}
+            <li><strong>{{ x.issue }}</strong>{% if x.why %}：{{ x.why }}{% endif %}
+              {% if x.positions %}<ul>{% for k, v in x.positions.items() %}<li>{{ k }}：{{ v }}</li>{% endfor %}</ul>{% endif %}
+            </li>
+          {% else %}
+            <li>{{ x }}</li>
+          {% endif %}
+        {% endfor %}
+      </ul>
+      {% endif %}
+      {% if cross.complementary %}<h3>互补关系</h3><ul>{% for x in cross.complementary %}<li>{{ x }}</li>{% endfor %}</ul>{% endif %}
+      {% if cross.blindspots %}<h3>盲点</h3><ul>{% for x in cross.blindspots %}<li>{{ x }}</li>{% endfor %}</ul>{% endif %}
+      {% if cross.multi_explanations %}
+      <h3>同一现象的多元解释</h3>
+      {% for m in cross.multi_explanations %}
+      <h4>{{ m.phenomenon }}</h4>
+      <ul>
+        {% for e in m.explanations %}
+        <li><strong>{{ e.discipline }}</strong>：{{ e.explanation }}<div class="note">证据：{{ e.evidence }} · 置信度：{{ e.confidence }}</div></li>
+        {% endfor %}
+      </ul>
+      {% endfor %}
+      {% endif %}
+      {% if cross.synthesis_model %}
+      <h3>跨学科综合模型</h3>
+      <table>
+        <thead><tr><th>文本现象</th><th>学科透镜</th><th>解释</th><th>证据</th><th>置信度</th></tr></thead>
+        <tbody>
+        {% for row in cross.synthesis_model %}
+          <tr><td>{{ row.phenomenon or row.现象 }}</td><td>{{ row.discipline or row.学科 }}</td>
+          <td>{{ row.explanation or row.解释 }}</td><td>{{ row.evidence or row.证据 }}</td>
+          <td>{{ row.confidence or row.置信度 }}</td></tr>
+        {% endfor %}
+        </tbody>
+      </table>
+      {% endif %}
+      {% if cross.further_questions %}<h3>进一步研究问题</h3><ol>{% for x in cross.further_questions %}<li>{{ x }}</li>{% endfor %}</ol>{% endif %}
+      {% if cross.limitations_ethics %}<h3>学科局限与伦理提醒</h3><div class="prose">{{ cross.limitations_ethics }}</div>{% endif %}
+    {% else %}
+      <p class="note">暂无跨学科综合数据（cross_discipline.json）</p>
+    {% endif %}
+  </section>
+
+  <!-- ============ 6. 全局综合 ============ -->
+  <section id="global" class="card">
+    <h2>全局综合</h2>
+    {% if global %}
+      {% if global.theme_clusters %}
+      <h3>主题聚类（按语义层）</h3>
+      {% for c in global.theme_clusters %}
+      <p><strong>{{ c.name }}</strong>{% if c.layer %} <span class="tag">[{{ c.layer }}]</span>{% endif %}：{{ c.files | join('、') }}
+      {% if c.representative_quote %}<blockquote>{{ c.representative_quote }}</blockquote>{% endif %}</p>
+      {% endfor %}
+      {% endif %}
+      {% if global.emotion_curve %}
+      <h3>情感曲线</h3>
+      <div class="prose">{{ global.emotion_curve }}</div>
+      {% endif %}
+      {% if global.inter_file_relations %}
+      <h3>跨文件关联（谱系判断）</h3>
+      <div class="prose">{{ global.inter_file_relations }}</div>
+      {% endif %}
+      {% if global.orchestration_logic %}
+      <h3>整体编排逻辑（结构判断）</h3>
+      <div class="prose">{{ global.orchestration_logic }}</div>
+      {% endif %}
+      {% if global.key_findings %}
+      <h3>重要发现</h3>
+      <ol>{% for f in global.key_findings %}<li>{{ f }}</li>{% endfor %}</ol>
+      {% endif %}
+    {% else %}
+      <p class="note">暂无全局综合数据（global_analysis.json）</p>
+    {% endif %}
+  </section>
+
+  <!-- ============ 7. 结语与总评 ============ -->
+  <section id="conclusion" class="card">
+    <h2>结语与总评</h2>
+    {% if global and global.summary %}
+    <div class="prose">{{ global.summary }}</div>
+    {% endif %}
+    {% if global and global.limitations %}
+    <h3>局限与不确定性</h3>
+    <ul class="note">{% for l in global.limitations %}<li>{{ l }}</li>{% endfor %}</ul>
+    {% endif %}
+    {% if cross and cross.further_questions %}
+    <h3>未竟问题</h3>
+    <ol>{% for x in cross.further_questions %}<li>{{ x }}</li>{% endfor %}</ol>
+    {% endif %}
+  </section>
+
+  <hr style="border:none;border-top:2px dashed var(--line);margin:32px 0;">
+  <p class="appendix-marker">—— 以下为附录（统计与数据底稿）——</p>
+
+  <!-- ============ 8. 附录·基础统计 ============ -->
+  <section id="stats" class="card">
+    <h2>附录·基础统计</h2>
+    {% if stats and stats.global and stats.global.method and stats.global.method.degraded %}
+    <p class="note" style="color:#b05757;font-weight:600;">
+      ⚠ 本次统计为<strong>降级模式</strong>：{{ stats.global.method.degraded_note }}。
+      相关数字（词频/TF-IDF/n-gram/共现）仅供粗粒度参考，安装 jieba 后请重跑。
+    </p>
+    {% endif %}
+    {% if stats and stats.global %}
+    <table>
+      <tr><th>指标</th><th>值</th></tr>
+      <tr><td>总原始字数</td><td>{{ stats.global.total_raw_chars }}</td></tr>
+      <tr><td>去空白字数</td><td>{{ stats.global.total_chars_no_ws }}</td></tr>
+      <tr><td>中文字符</td><td>{{ stats.global.total_chinese_chars }}</td></tr>
+      <tr><td>英文单词</td><td>{{ stats.global.total_english_words }}</td></tr>
+      <tr><td>段落</td><td>{{ stats.global.total_paragraphs }}</td></tr>
+      <tr><td>句子</td><td>{{ stats.global.total_sentences }}</td></tr>
+    </table>
+    {% endif %}
+    <h3>文件总览</h3>
+    <table>
+      <thead><tr><th>文件</th><th>字数</th><th>段落</th><th>句子</th><th>日期</th><th>情感</th><th>引用数</th></tr></thead>
+      <tbody>
+      {% if stats and stats.files %}
+        {% for f in stats.files %}
+        <tr>
+          <td>{{ f.file }}</td>
+          <td>{{ f.chinese_chars }}</td>
+          <td>{{ f.paragraph_count }}</td>
+          <td>{{ f.sentence_count }}</td>
+          <td>{{ timeline.entries[loop.index0].date_guess if timeline and timeline.entries[loop.index0] else "—" }}</td>
+          <td>{{ timeline.entries[loop.index0].sentiment_label if timeline and timeline.entries[loop.index0] else "—" }}</td>
+          <td>{{ quotes.per_file[loop.index0].quote_count if quotes and quotes.per_file[loop.index0] else "—" }}</td>
+        </tr>
+        {% endfor %}
+      {% else %}
+        <tr><td colspan="7">无统计数据</td></tr>
+      {% endif %}
+      </tbody>
+    </table>
+    {% if timeline %}
+    <h3>时间线</h3>
+    <p class="note">时间范围：{{ timeline.date_range | join(' ~ ') or '未识别' }}；
+       写作时间倾向：{{ timeline.time_slot_distribution }}；
+       季节：{{ timeline.season_distribution }}</p>
+    {% if timeline.method %}
+    <p class="note">情感曲线方法：{{ timeline.method.sentiment }}。<br>
+       局限：{{ timeline.method.limitation }}</p>
+    {% endif %}
+    {% endif %}
+  </section>
+
+  <!-- ============ 9. 附录·关键词与词频 ============ -->
+  <section id="keywords" class="card">
+    <h2>附录·关键词与词频</h2>
+    {% if keywords %}
+    <p class="note">{{ keywords.note }}</p>
+    {% if keywords.tfidf %}
+    <h3>TF-IDF 关键词（主要排序依据）</h3>
+    <table>
+      <thead><tr><th>词</th><th>得分</th><th>示例句</th></tr></thead>
+      <tbody>
+      {% for kw in keywords.tfidf %}
+        <tr><td>{{ kw.word }}</td><td>{{ kw.score }}</td><td class="note">{{ kw.evidence }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+    {% if keywords.global_pos_filtered %}
+    <h3>词性过滤关键词（无虚词）</h3>
+    <table>
+      <thead><tr><th>词</th><th>频次</th><th>示例句</th></tr></thead>
+      <tbody>
+      {% for kw in keywords.global_pos_filtered %}
+        <tr><td>{{ kw.word }}</td><td>{{ kw.count }}</td><td class="note">{{ kw.evidence }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+    {% if keywords.global %}
+    <h3>纯词频表（含虚词，仅供参考）</h3>
+    <table>
+      <thead><tr><th>词</th><th>频次</th><th>占比</th><th>示例句</th></tr></thead>
+      <tbody>
+      {% for kw in keywords.global %}
+        <tr><td>{{ kw.word }}</td><td>{{ kw.count }}</td><td>{{ kw.ratio }}</td><td class="note">{{ kw.evidence }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
+    {% endif %}
+  </section>
+
+  <!-- ============ 10. 附录·引用分析 ============ -->
+  <section id="quotes" class="card">
+    <h2>附录·引用分析</h2>
+    {% if quotes %}
+    <p class="note">引用总数（去噪后）：{{ quotes.total_quotes }}；
+       强调引号（不计入引用）：{{ quotes.total_emphasis_quotes if quotes.total_emphasis_quotes is defined else 0 }}；
+       引用密度：{{ quotes.density }}；
+       来源分布：{{ quotes.source_distribution }}</p>
+    {% if quotes.method %}
+    <p class="note">判定规则：{{ quotes.method.judgement }}</p>
+    {% endif %}
+    <table>
+      <thead><tr><th>引用文本</th><th>来源猜测</th><th>文件</th><th>位置</th><th>判定</th></tr></thead>
+      <tbody>
+      {% for q in quotes.quotes %}
+        <tr><td>{{ q.text }}</td><td>{{ q.source_guess }}</td><td>{{ q.file }}</td><td>{{ q.position }}</td><td class="note">{{ q.judgement }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% if quotes.emphasis_quotes %}
+    <details>
+      <summary>强调/专名引号（{{ quotes.emphasis_quotes | length }} 条，不计入引用总数）</summary>
+      <div class="body">
+      <ul class="note">{% for q in quotes.emphasis_quotes %}<li>{{ q.text }}（{{ q.file }} · {{ q.position }}）</li>{% endfor %}</ul>
+      </div>
+    </details>
+    {% endif %}
+    {% endif %}
+  </section>
+
+  <!-- ============ 11. 附录·参考文献 ============ -->
+  <section id="references" class="card">
+    <h2>附录·参考文献（含核验状态）</h2>
+    {% if knowledge and knowledge.records %}
+    <table>
+      <thead><tr><th>学科</th><th>概念</th><th>来源</th><th>核验</th></tr></thead>
+      <tbody>
+      {% for r in knowledge.records %}
+        <tr><td>{{ r.discipline }}</td><td>{{ r.concept }}</td><td>{{ r.source or r.note }}</td>
+        <td>{{ '已核验' if r.verified else '未核验' }}</td></tr>
+      {% endfor %}
+      </tbody>
+    </table>
+    {% else %}
+      <p class="note">暂无参考文献记录（knowledge_sources.json）</p>
+    {% endif %}
+  </section>
+
+  <!-- ============ 12. 附录·方法/隐私/不确定性 ============ -->
+  <section id="appendix" class="card">
+    <h2>附录·方法说明 / 隐私说明 / 不确定性</h2>
+    <h3>方法说明</h3>
+    <p>本报告由 mirror-dialogue skill 生成：
+       统计（字数/词频/TF-IDF/n-gram/共现/引用/时间线）由 scripts/ 计算，
+       单篇与全局分析、学科分析与跨学科综合由 LLM 基于原文证据完成。</p>
+    <ul class="note">
+      <li>分词引擎：{{ stats.global.method.tokenizer if stats and stats.global and stats.global.method else "未知" }}</li>
+      <li>词性过滤：{{ stats.global.method.posseg if stats and stats.global and stats.global.method and stats.global.method.posseg else "未知" }}
+          （仅保留 {{ stats.global.method.keep_pos | join('/') if stats and stats.global and stats.global.method and stats.global.method.keep_pos else "n/nr/ns/nt/vn/an/a" }}）</li>
+      <li>停用词数：{{ stats.global.method.stopword_count if stats and stats.global and stats.global.method else "未知" }}</li>
+      <li>情感曲线：规则词典法（内置正负情绪词典），非模型推断，仅供粗粒度参考。</li>
+      <li>词频/TF-IDF/n-gram/共现：jieba 分词 + 200+ 停用词 + posseg 词性过滤 + 手写 TF-IDF（无 jieba 时降级，见基础统计章节标注）。</li>
+    </ul>
+    <h3>隐私说明</h3>
+    <p>报告遵循 config.yaml 隐私规则，默认对姓名、电话、地址等做脱敏处理。</p>
+    <h3>不确定性</h3>
+    <p>所有推断均标注“推断”，证据不足标注“证据不足”，学科知识未检索的标注“需核验”。</p>
+    <h3>校验状态</h3>
+    <p class="note">由 validate.py 输出 validation_report.json，建议在生成报告后运行一次自检。</p>
+  </section>
+
+  <footer>
+    生成时间：{{ generated_at or "—" }} ·
+    分析者：mirror-dialogue ·
+    校验状态：{{ validation_status or "未校验" }}
+  </footer>
+</div>
+</body>
+</html>
