@@ -1,0 +1,205 @@
+name: Release & Publish
+
+# 触发方式：
+#   1) 推送语义化版本标签（vX.Y.Z）——自动完成 测试 → 打包 → Release → GHCR 发布
+#   2) 手动运行（workflow_dispatch），传入已存在的标签，用于补发/重跑
+on:
+  push:
+    tags:
+      - "v*.*.*"
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: "已存在的标签（例如 v1.0.0）"
+        required: true
+        type: string
+
+# 同一标签的发布串行执行，避免重复创建 Release
+concurrency:
+  group: release-${{ github.event.inputs.tag || github.ref_name }}
+  cancel-in-progress: false
+
+permissions:
+  contents: read
+
+env:
+  IMAGE: ghcr.io/sunshinemahiru/mirror-dialogue
+
+jobs:
+  # ------------------------------------------------------------------
+  # 1) 发布前强制验证：单测 + 语法检查（与 ci.yml 保持一致）
+  # ------------------------------------------------------------------
+  test:
+    name: Test
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: "3.12"
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Run unit tests
+        run: python -m unittest discover tests
+
+      - name: Syntax check
+        run: |
+          python -m py_compile run.py validate.py
+          python -m py_compile scripts/*.py
+
+  # ------------------------------------------------------------------
+  # 2) 构建发行产物：从标签树导出 Skill 归档 + 校验和
+  #    说明：本项目是 Python Skill（非库包），以完整目录归档为发行形态，
+  #    不再拆 wheel/sdist，避免改变其「解压即用」的使用方式。
+  # ------------------------------------------------------------------
+  build:
+    name: Build skill bundle
+    needs: test
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.meta.outputs.version }}
+      tag: ${{ steps.meta.outputs.tag }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - name: Resolve version from tag
+        id: meta
+        run: |
+          set -euo pipefail
+          ref="${{ github.event.inputs.tag || github.ref_name }}"
+          version="${ref#v}"
+          if ! printf '%s' "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+([-.][0-9A-Za-z.-]+)?$'; then
+            echo "::error::标签 '$ref' 不是语义化版本（应为 vX.Y.Z）"
+            exit 1
+          fi
+          echo "tag=v${version}" >> "$GITHUB_OUTPUT"
+          echo "version=${version}" >> "$GITHUB_OUTPUT"
+
+      - name: Build archives from tag tree
+        run: |
+          set -euo pipefail
+          version="${{ steps.meta.outputs.version }}"
+          tag="${{ steps.meta.outputs.tag }}"
+          mkdir -p dist
+          git archive --format=tar.gz \
+            --prefix="mirror-dialogue-${version}/" \
+            -o "dist/mirror-dialogue-${version}.tar.gz" "$tag"
+          git archive --format=zip \
+            --prefix="mirror-dialogue-${version}/" \
+            -o "dist/mirror-dialogue-${version}.zip" "$tag"
+          cd dist
+          sha256sum "mirror-dialogue-${version}.tar.gz" "mirror-dialogue-${version}.zip" > SHA256SUMS.txt
+          ls -lh
+          cat SHA256SUMS.txt
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: dist
+          path: dist/*
+          if-no-files-found: error
+          retention-days: 7
+
+  # ------------------------------------------------------------------
+  # 3) 创建 / 更新 GitHub Release，并附加构建产物
+  # ------------------------------------------------------------------
+  release:
+    name: GitHub Release
+    needs: [test, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: write
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/download-artifact@v4
+        with:
+          name: dist
+          path: dist
+
+      - name: Create or update release
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAG: ${{ needs.build.outputs.tag }}
+          VERSION: ${{ needs.build.outputs.version }}
+        run: |
+          set -euo pipefail
+          notes=".github/release-notes/${VERSION}.md"
+          title="mirror-dialogue v${VERSION}"
+
+          if gh release view "$TAG" >/dev/null 2>&1; then
+            echo "Release $TAG 已存在，改为更新标题与附件"
+            if [ -f "$notes" ]; then
+              gh release edit "$TAG" --title "$title" --notes-file "$notes"
+            else
+              gh release edit "$TAG" --title "$title"
+            fi
+            gh release upload "$TAG" dist/* --clobber
+          else
+            if [ -f "$notes" ]; then
+              gh release create "$TAG" dist/* \
+                --title "$title" \
+                --notes-file "$notes" \
+                --verify-tag
+            else
+              gh release create "$TAG" dist/* \
+                --title "$title" \
+                --generate-notes \
+                --verify-tag
+            fi
+          fi
+
+  # ------------------------------------------------------------------
+  # 4) 发布到 GitHub Packages（GHCR）
+  #    GitHub Packages 不提供 PyPI 注册表，Python 侧以 OCI 容器镜像发布；
+  #    原始归档仍以 Release Assets 为准。
+  # ------------------------------------------------------------------
+  packages:
+    name: Publish GHCR image
+    needs: [test, build]
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      packages: write
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.inputs.tag || github.ref }}
+
+      - uses: docker/setup-buildx-action@v3
+
+      - uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Extract image metadata
+        id: meta
+        uses: docker/metadata-action@v5
+        with:
+          images: ${{ env.IMAGE }}
+          tags: |
+            type=semver,pattern={{version}},value=v${{ needs.build.outputs.version }}
+            type=semver,pattern={{major}}.{{minor}},value=v${{ needs.build.outputs.version }}
+            type=raw,value=latest
+          labels: |
+            org.opencontainers.image.title=mirror-dialogue
+            org.opencontainers.image.description=Mirror-dialogue analysis skill: essays and diaries as mirror dialogues, producing a multi-disciplinary HTML report
+            org.opencontainers.image.licenses=MIT
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          push: true
+          tags: ${{ steps.meta.outputs.tags }}
+          labels: ${{ steps.meta.outputs.labels }}
