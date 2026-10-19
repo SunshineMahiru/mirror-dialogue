@@ -1,0 +1,70 @@
+# =====================================================================
+# mirror-dialogue — 全局配置
+# 随笔/日记镜面对话 + 多学科透镜分析
+# =====================================================================
+
+# ---- 输入输出 ----
+target_dir: ""            # 待分析目录（留空则由运行时参数/提示词注入）
+output_dir: "./output"    # JSON 与 HTML 输出目录
+output_html: "./output/report.html"   # 最终 HTML 报告路径
+language: "zh"            # 语言：zh / en
+
+# ---- 隐私 ----
+privacy_mode: true        # 默认脱敏：不展示真实姓名/地址/电话
+privacy_patterns:          # 命中则替换为 [已脱敏]
+  - name: "手机号"
+    pattern: "1[3-9]\\d{9}"
+  - name: "身份证"
+    pattern: "\\d{17}[\\dXx]"
+  - name: "邮箱"
+    pattern: "[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\\.[A-Za-z]{2,}"
+  - name: "座机"
+    pattern: "0\\d{2,3}-\\d{7,8}"
+privacy_names: []          # 需脱敏的姓名名单（中文姓名无法靠正则可靠识别，须显式列出，如 ["张三","李四"]）
+privacy_addresses: []      # 需脱敏的地址/地名名单（同样须显式列出，如 ["某市某路1号"]）
+
+# ---- 网络与知识 ----
+allow_network: false      # 是否允许联网检索学科知识
+verify_references: true   # 文献核验开关：默认开启，且关联 allow_network；
+                          # 未联网（allow_network:false）时自动关闭——不使用外部文献、
+                          # 只标「未检索，需核验」、绝不编造，validate 不再判为编造红线 fail
+knowledge_source: "builtin"   # network / local / builtin
+# knowledge_lookup.py 的知识库根目录（local 模式）
+local_knowledge_dir: "./knowledge/references"
+
+# ---- 文本解析 ----
+supported_extensions: [".txt", ".md", ".doc", ".docx"]
+strip_frontmatter: true   # 去除 YAML/TOML frontmatter
+strip_html_tags: true     # 去除 HTML 标签
+strip_page_numbers: true  # 去除孤立页码（如 "第 3 页 / 4" 或纯数字行）
+collapse_blank_lines: true
+
+# ---- 统计参数 ----
+reading_speed_cpm: 300    # 中文阅读速度：字/分钟
+stopwords_file: ""        # 自定义停用词文件（留空使用内置默认）
+userdict_file: ""         # jieba 自定义词典（留空则跳过）
+tfidf_top_n: 50           # TF-IDF 关键词取前 N
+ngram_range: [2, 3]       # n-gram 范围
+cooccurrence_window: 8    # 共现窗口（字符/词个数）
+top_keywords_n: 20        # 高频词取前 N
+
+# ---- 引用抽取 ----
+# 内置已覆盖：中文引号“”、英文引号""、书名号《》、篇名号〈〉。
+# 此处仅放「额外」自定义模式；与内置重复会导致引用被重复抽取（脚本已做去重兜底）。
+quote_patterns: []
+citation_verbs: ["说", "写道", "提到", "引用", "如", "所谓", "记得", "有人说", "书上说"]
+
+# ---- 学科分析 ----
+disciplines_yaml: "./knowledge/disciplines.yaml"
+min_evidence_per_core: 3   # 每个核心学科至少 N 条原文证据
+discipline_share: 0.6      # 学科分析占报告比例目标（0.5-0.7）
+
+# ---- HTML 生成 ----
+html_template: "./templates/report.html.j2"
+chart_engine: "inline_svg"   # inline_svg / chartjs / none
+offline: true              # 离线模式：全部内联，不引用 CDN
+collapse_long_sections: true  # 长文用 <details> 折叠
+
+# ---- 分块生成 ----
+chunk_batch: 5             # 单篇 Map 每批处理篇数
+report_no_token_limit: true  # 报告不设 token 上限，分块写入

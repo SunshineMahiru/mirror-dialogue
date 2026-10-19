@@ -1,0 +1,3 @@
+jieba
+pyyaml
+jinja2
