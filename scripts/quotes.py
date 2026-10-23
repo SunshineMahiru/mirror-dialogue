@@ -1,22 +1,3 @@
-#!/usr/bin/env python3
-"""
-quotes.py — 引用定位与计数（标记层路径）
-
-职责边界（见 methodology/quote-analysis.md）：
-- 「什么算引用」的判定交给 LLM（标记层 annotation.json）。
-- 本脚本只做：读取标记层的引用候选 → 精确定位（段落号）→ 计数、密度、来源分布、去重。
-
-两种路径：
-- 标记层路径（推荐）：--annotation annotation.json，脚本不做内容判定。
-- legacy 路径（向后兼容）：无 --annotation 时用内置启发式（不建议，会误判）。
-
-输出：quotes.json
-
-用法：
-    python quotes.py --manifest <files_manifest.json> [--out <输出目录>] \
-        [--config <config.yaml>] [--annotation <annotation.json>]
-"""
-
 import argparse
 import json
 import re
@@ -73,10 +54,9 @@ def load_config(cfg_path):
 
 
 def has_subject_predicate(text: str) -> bool:
-    """轻量判定引号内容是否为完整主谓从句（而非孤立专名/短强调词）。
+    """用标点与常见谓词判断引号里是不是一句话。
 
-    文本已保证 len >= 15。含句内/句末标点，或含常见谓词/系词，即视为
-    具备主谓结构。此为启发式，非句法分析，仅用于区分「引述」与「强调」。
+    做真正的句法分析代价太大，这里只需要把「引述」和「强调」分开。
     """
     if any(ch in text for ch in CLAUSE_PUNCT):
         return True
@@ -84,7 +64,7 @@ def has_subject_predicate(text: str) -> bool:
 
 
 def guess_source(context: str) -> str:
-    """根据引号前 50 字上下文猜测来源；不依据引用文本自身。"""
+    """只看引号前的 50 字：引用自身几乎不会交代出处。"""
     for src, kws in SOURCE_KEYWORDS.items():
         if any(k in context for k in kws):
             return src
@@ -92,7 +72,6 @@ def guess_source(context: str) -> str:
 
 
 def classify_quote(label, qtext, context_20, verbs):
-    """返回 (是否计入引用, 判定依据)。"""
     if label in ("book_title", "piece_title"):
         return True, "书名/篇名包裹"
     if any(v in context_20 for v in verbs):
@@ -103,28 +82,27 @@ def classify_quote(label, qtext, context_20, verbs):
 
 
 def _normalize(s: str) -> str:
-    """归一化：去引号/空白/常见标点，用于模糊定位（容忍标记层 text 与原文的标点差异）。"""
+    """去掉标点与空白：标记层抄回的文本常在标点上和原文有出入。"""
     return re.sub(r"[\s“”‘’\"'，。！？；：、…—\-（）()《》〈〉]", "", s)
 
 
 def find_position(content: str, quote_text: str) -> str:
-    """返回引用所在段落号（1-based）。
+    """定位引用所在段落，逐级放宽比较方式。
 
-    三级匹配：①精确匹配；②逐段归一化匹配（去标点/空白，段落号准确）；③全文归一化
-    匹配（跨段引用，段落号取起始段近似）。均失败返回「位置未定位」。
+    跨段引用只能按位置比例给近似段落号，读者仍能凭段落号找到大致位置。
     """
-    # 1. 精确匹配
+    # 精确匹配，段落号绝对准确
     idx = content.find(quote_text)
     if idx != -1:
         return f"第{content[:idx].count(chr(10)) + 1}段"
     norm_text = _normalize(quote_text)
     if not norm_text:
         return "位置未定位"
-    # 2. 逐段归一化匹配
+    # 逐段比对，容忍标点差异，段落号仍然准确
     for i, para in enumerate(content.split("\n"), start=1):
         if norm_text in _normalize(para):
             return f"第{i}段"
-    # 3. 全文归一化匹配（跨段引用，段落号按比例近似）
+    # 全文比对，跨段引用只能按位置比例估算
     norm_content = _normalize(content)
     idx2 = norm_content.find(norm_text)
     if idx2 != -1:
@@ -139,7 +117,7 @@ def extract_quotes(item, cfg):
     name = item.get("name", "")
     quotes = []
     emphasis = []
-    seen = set()  # 去重：同 (type, text) 只保留一次
+    seen = set()  # 同一条引文会被多个模式同时命中，按 (type, text) 只留一次
     patterns = list(QUOTE_PATTERNS)
     for pat_str in cfg.get("quote_patterns", []):
         if isinstance(pat_str, str):
@@ -155,7 +133,7 @@ def extract_quotes(item, cfg):
             qtext = m.group(1).strip()
             if not qtext:
                 continue
-            # 中文/英文引号最小长度 6 字（书名/篇名不受此限制）
+            # 引号里只剩两三个字的，多是强调词；书名与篇名不受这条限制
             if label in ("cn_quote", "en_quote") and len(qtext) < 6:
                 continue
             context_20 = content[max(0, m.start() - 20):m.start()]
@@ -179,7 +157,6 @@ def extract_quotes(item, cfg):
             else:
                 emphasis.append(entry)
 
-    # 引述动词识别（句级）
     verb_hits = []
     sentences = re.split(r"[。！？!?\n]", content)
     for s in sentences:
@@ -192,19 +169,12 @@ def extract_quotes(item, cfg):
 
 
 def annotate_from_markup(manifest, annotation):
-    """标记层路径：从 annotation.json 读 LLM 判定的引用候选，脚本只做精确定位与计数。
-
-    「什么算引用」的判定已由 LLM（标记层）完成，本函数只负责：
-    - find_position 精确定位段落号
-    - 计数、密度、来源分布、去重
-
-    返回 (all_quotes, all_emphasis, per_file, total_chars)。
-    """
+    """标记层只给出引用文本，段落号与字符偏移必须回到原文里现算。"""
     content_by_name = {}
     for item in manifest["files"]:
         content = item.get("content", "")
         content_by_name[item.get("name")] = content
-        # 也支持用原始路径的 basename 匹配
+        # 标记层可能写文件名，也可能写路径，两种写法都要能对上
         p = item.get("file", "")
         if p:
             content_by_name[Path(p).name] = content
@@ -257,7 +227,7 @@ def annotate_from_markup(manifest, annotation):
         per_file_map.setdefault(name, {"quotes": [], "emphasis": []})
         per_file_map[name]["emphasis"].append(entry)
 
-    # 保持 manifest 文件顺序
+    # 按 manifest 顺序输出，报告的章节顺序与原文顺序一致
     per_file = []
     total_chars = 0
     for item in manifest["files"]:
@@ -308,7 +278,6 @@ def main():
     method = {}
 
     if annotation is not None:
-        # 标记层路径：LLM 已判定「什么算引用」，脚本只做定位/计数
         all_quotes, all_emphasis, per_file, total_chars = annotate_from_markup(manifest, annotation)
         method = {
             "judgement": "LLM 标记层判定（annotation.json）+ 脚本精确定位/计数，"
@@ -316,7 +285,7 @@ def main():
             "source": "annotation.json",
         }
     else:
-        # legacy 路径：脚本启发式判定（仅向后兼容，标记层为主路径）
+        # 没有 annotation 只能退回启发式，判定规则与标记层不同，误判会多一些
         for item in manifest["files"]:
             content = item.get("content", "")
             total_chars += len(re.sub(r"\s+", "", content))
