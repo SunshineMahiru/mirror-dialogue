@@ -1,26 +1,3 @@
-#!/usr/bin/env python3
-"""
-discipline_router.py — 学科证据命中计数（标记层路径）
-
-职责边界（见 methodology/discipline-routing.md）：
-- core/secondary/excluded 的判定交给 LLM（标记层 annotation.json）。
-- 本脚本只做：对每个学科的 when/concepts 做证据命中计数（供 LLM 参考）。
-
-两种路径：
-- 标记层路径（推荐）：--annotation annotation.json，读取 LLM 判定的 discipline_plan，
-  脚本只做证据命中计数。
-- legacy 路径（向后兼容）：无 --annotation 时用关键词计数 + avg*1.2 一刀切（不建议，会误判）。
-
-数字人文始终作为 core（统计基础学科）。
-
-输出：discipline_plan.json（含 hit_counts 与 method 标注）
-
-用法：
-    python discipline_router.py --stats <stats.json> --keywords <keywords.json> \
-        --quotes <quotes.json> --timeline <timeline.json> \
-        --disciplines <disciplines.yaml> --out <输出目录> [--annotation <annotation.json>]
-"""
-
 import argparse
 import json
 import re
@@ -44,13 +21,12 @@ def load_disciplines(path):
 
 
 def feature_text(manifest, stats, keywords, quotes, timeline):
-    """拼接全部可分析特征文本，用于关键词触发匹配。
+    """把可检索的文本拼在一起。
 
-    正文内容是最可靠的触发信号（无 jieba 时关键词退化为单字，
-    无法命中多字触发词），故始终纳入 manifest 中的正文。
+    正文必须算进去：没有 jieba 时关键词会退化成单字，命中不了多字触发词。
     """
     parts = []
-    # 正文内容（最优先）
+    # 正文内容
     if manifest:
         for f in manifest.get("files", []):
             parts.append(f.get("content", ""))
@@ -74,10 +50,9 @@ def feature_text(manifest, stats, keywords, quotes, timeline):
 
 
 def score_discipline(discipline, feat):
-    """按触发关键词命中次数评分。"""
     when = discipline.get("when", "")
     kws = [k.strip() for k in re.split(r"[、，,]", when) if k.strip()]
-    # 同时把 concepts/evidence 中的词作为弱信号
+    # concepts 与 evidence 只算半分，一个概念不该把学科顶进核心
     weak = []
     for key in ("concepts", "evidence"):
         for c in discipline.get(key, []):
@@ -97,7 +72,6 @@ def score_discipline(discipline, feat):
 
 
 def classify(scores):
-    """按得分把学科分为 core / secondary / excluded。"""
     core, secondary, excluded = [], [], []
     total = sum(s for s in scores.values())
     avg = total / len(scores) if scores else 0
@@ -112,11 +86,7 @@ def classify(scores):
 
 
 def evidence_hits_from_markup(manifest, disciplines):
-    """标记层路径：LLM 已判定路由，脚本只对每个学科做证据命中计数（供 LLM 参考）。
-
-    不再用命中次数决定 core/secondary/excluded——那是 LLM 的判定。脚本仅数
-    「when 触发词 + concepts/evidence 弱信号」在正文里命中几次，作为证据旁证。
-    """
+    """数一数每个学科的触发词在正文里出现几次，给判定留个旁证。"""
     feat = feature_text(manifest, None, None, None, None)
     hit_map = {}
     for d in disciplines:
@@ -181,7 +151,7 @@ def main():
     out_path = out_dir / "discipline_plan.json"
 
     if annotation is not None and annotation.get("discipline_plan"):
-        # 标记层路径：LLM 判定路由，脚本只做证据命中计数
+        # 标记层给出的路由优先，命中计数只在它没写 evidence 时补位
         ap_plan = annotation["discipline_plan"]
         core = list(ap_plan.get("core_disciplines", []))
         secondary = list(ap_plan.get("secondary_disciplines", []))
@@ -208,7 +178,7 @@ def main():
             "method": "LLM 标记层判定路由 + 脚本证据命中计数（不再 avg*1.2 一刀切）",
         }
     else:
-        # legacy 路径：关键词计数 + 一刀切（仅向后兼容，标记层为主路径）
+        # 没有标记层时按平均分划线，命中次数高的进核心，命中过的进次要
         feat = feature_text(manifest, stats, keywords, quotes, timeline)
         scores = {}
         hit_map = {}
