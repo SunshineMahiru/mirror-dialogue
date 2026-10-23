@@ -1,32 +1,3 @@
-#!/usr/bin/env python3
-"""
-run.py — 编排入口：五阶段串联全流程
-
-四层边界（见 SKILL.md / methodology/README.md）：
-- 方法论层（methodology/）：定义规则。
-- 标记层（LLM）：通读原文产出 annotation.json（引用候选 + 学科路由判定）。
-- 计算层（脚本）：只做精确计算（统计 / 引用定位计数 / 证据命中计数）。
-- 分析层（LLM）：基于标记层+计算层产出 4 个分析 JSON。
-
-五阶段：
-  阶段1 ingest → stats → timeline（纯计算，脚本）
-  阶段2 annotation.json（标记层，LLM）
-  阶段3 quotes(定位计数) → discipline_router(证据计数) → knowledge_lookup（脚本）
-  阶段4 single / global / discipline / cross 四个分析 JSON（LLM）
-  阶段5 build_html（build 前自动跑 validate.py 事前闸门；--force 可出草稿）
-
-运行方式：
-    python run.py --target-dir <目录> [--out ./output] [--config ./config.yaml] \
-        [--disciplines ./knowledge/disciplines.yaml] \
-        [--template ./templates/report.html.j2] \
-        [--knowledge-source builtin] [--html ./output/report.html] \
-        [--run-llm-check] [--force] [--skip-scripts]
-
-- 不带 --skip-scripts：跑阶段1，检查 annotation.json 缺失则打印待办退出，存在则继续阶段3。
-- 带 --skip-scripts：跳过脚本（沿用已有产物），只检查分析 JSON 并 build（断点续跑）。
-- 事前闸门：build 前强制跑 validate.py --gate-only，fail 非空默认拒绝渲染，--force 可出草稿。
-"""
-
 import argparse
 import json
 import subprocess
@@ -41,7 +12,7 @@ except ImportError:
 
 SCRIPTS_DIR = Path(__file__).resolve().parent / "scripts"
 
-# 由 LLM 生成、build_html 消费的分析 JSON
+# 分析层的四份产物，缺一份就说明分析还没做完
 LLM_JSON = [
     "single_analysis.json",
     "global_analysis.json",
@@ -59,11 +30,7 @@ def run(cmd):
 
 
 def run_gate(data_dir, config_path):
-    """build 前的事前闸门：跑 validate.py --gate-only，返回 exit code。
-
-    - 0 表示内容检查全部通过；
-    - 非 0 表示存在 fail（深度不足/文献未核验/隐私泄露等），由调用方决定拦截或 --force。
-    """
+    """返回 validate.py 闸门的退出码：0 表示内容检查全部通过。"""
     root = Path(__file__).resolve().parent
     cmd = [sys.executable, str(root / "validate.py"),
            "--data-dir", data_dir, "--config", config_path, "--gate-only"]
@@ -73,7 +40,7 @@ def run_gate(data_dir, config_path):
 
 
 def run_post_check(data_dir, config_path, html_path):
-    """build 后的完整自检（含 HTML 结构），仅输出结果、不阻塞流程。"""
+    """渲染之后补跑一次完整校验；结果只打印，不改变退出码。"""
     root = Path(__file__).resolve().parent
     cmd = [sys.executable, str(root / "validate.py"),
            "--data-dir", data_dir, "--config", config_path, "--html", html_path]
@@ -82,7 +49,6 @@ def run_post_check(data_dir, config_path, html_path):
 
 
 def gen_concepts_json(disciplines_path, out_dir):
-    """从 disciplines.yaml 提取所有学科概念，生成 knowledge_lookup 所需 concepts.json。"""
     if yaml is None:
         print("[warn] PyYAML 未安装，跳过 concepts.json 生成", file=sys.stderr)
         return None
@@ -129,23 +95,20 @@ def main():
     if args.skip_scripts:
         print("[run] 已跳过全部脚本步骤（--skip-scripts），沿用已有产物。")
     else:
-        # ============ 阶段1：纯计算脚本（不依赖标记层） ============
+        # 阶段1：三份产物都只读原文，不涉及任何 LLM 判定
         if args.skip_stage1:
             print("[run] 跳过阶段1（--skip-stage1），沿用 ingest/stats/timeline 产物。")
         else:
-            # 1. 扫描解析
             run([sys.executable, str(SCRIPTS_DIR / "ingest.py"),
                  "--target-dir", args.target_dir, "--out", out, "--config", args.config])
 
-            # 2. 统计
             run([sys.executable, str(SCRIPTS_DIR / "stats.py"),
                  "--manifest", manifest, "--out", out, "--config", args.config])
 
-            # 3. 时间线（只依赖 manifest，纯计算）
             run([sys.executable, str(SCRIPTS_DIR / "timeline.py"),
                  "--manifest", manifest, "--out", out])
 
-        # ============ 阶段2：标记层（LLM 产物，判定交给 LLM） ============
+        # 阶段2：标记层只能由 LLM 通读原文产出，脚本替代不了
         annotation_path = f"{out}/annotation.json"
         if not Path(annotation_path).exists():
             print("\n[待办] 标记层 annotation.json 缺失。")
@@ -156,13 +119,11 @@ def main():
             print(f"      python run.py --target-dir {args.target_dir} --skip-stage1")
             sys.exit(0)
 
-        # ============ 阶段3：依赖标记层的脚本（只做精确计算/证据计数） ============
-        # 4. 引用：脚本只定位/计数，不再自行判定「什么算引用」
+        # 阶段3：以下脚本都要读标记层产物，缺 annotation 就跑不动
         run([sys.executable, str(SCRIPTS_DIR / "quotes.py"),
              "--manifest", manifest, "--out", out, "--config", args.config,
              "--annotation", annotation_path])
 
-        # 5. 学科路由：脚本只做证据命中计数，core/secondary 判定来自标记层
         run([sys.executable, str(SCRIPTS_DIR / "discipline_router.py"),
              "--manifest", manifest,
              "--stats", f"{out}/stats.json",
@@ -172,7 +133,6 @@ def main():
              "--disciplines", args.disciplines, "--out", out,
              "--annotation", annotation_path])
 
-        # 6. 知识来源记录（concepts 由 disciplines.yaml 生成）
         concepts = gen_concepts_json(args.disciplines, out)
         if concepts:
             run([sys.executable, str(SCRIPTS_DIR / "knowledge_lookup.py"),
@@ -184,7 +144,7 @@ def main():
                   "knowledge_sources.json 将缺失，validate.py 会据此报 fail（exit 1）。",
                   file=sys.stderr)
 
-    # 7. 检查 LLM 生成的 JSON 是否齐全
+    # 分析产物缺失时先摆出待办并退出，补齐后再从断点接着跑
     missing = [j for j in LLM_JSON if not (Path(out) / j).exists()]
     if missing:
         print("\n[待办] 以下分析 JSON 需由 LLM 按 SKILL.md 分批生成：")
@@ -196,9 +156,9 @@ def main():
         print(f"      python run.py --target-dir {args.target_dir} --run-llm-check --skip-scripts")
         sys.exit(0)
 
-    # 8. 生成 HTML（LLM JSON 齐全时）
+    # 产物齐全才渲染，免得交付一份只有统计表的报告
     if args.run_llm_check:
-        # P0：build 前强制跑事前闸门（内容检查，跳过 HTML）
+        # 渲染前先拦内容，使不合格的报告没有机会成页
         gate_rc = run_gate(out, args.config)
         if gate_rc != 0 and not args.force:
             print("\n[闸门] validate.py 检测到 fail，已拒绝渲染 HTML。")
@@ -210,7 +170,7 @@ def main():
         if args.force:
             build_cmd.append("--force")
         run(build_cmd)
-        # build 后跑完整 validate（含 HTML 结构），输出最终 validation_report.json
+        # 页面结构只能在渲染之后检查
         run_post_check(out, args.config, html_path)
     else:
         print("\n[完成] 脚本统计步骤已全部完成；LLM 分析 JSON 已齐，")
