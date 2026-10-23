@@ -1,10 +1,3 @@
-#!/usr/bin/env python3
-"""
-tests/test_marker_layer.py — 标记层反转的集成测试（依赖 output/ 既有产物作 fixture）
-
-运行：python -m unittest discover tests
-"""
-
 import json
 import subprocess
 import sys
