@@ -1,19 +1,3 @@
-#!/usr/bin/env python3
-"""
-timeline.py — 日期识别、时间线、情感曲线
-
-功能：
-- 识别文本中的日期（YYYY-MM-DD / YYYY年M月D日 / MM-DD / M月D日 / 相对时间词）
-- 按日期/篇序构建时间线
-- 基于情绪词典计算每篇情感得分，形成情感曲线
-- 写作时间倾向（清晨/深夜）、季节
-
-输出：timeline.json
-
-用法：
-    python timeline.py --manifest <files_manifest.json> [--out <输出目录>] [--config <config.yaml>]
-"""
-
 import argparse
 import json
 import re
@@ -34,7 +18,7 @@ DATE_PATTERNS = [
     (re.compile(r"(\d{1,2})[-/](\d{1,2})"), "month_day_num"),
 ]
 
-# 情绪词典（正向/负向），可扩展
+# 情绪词典只收含义明确的正负词，含糊的词放进来会把曲线拉平
 POSITIVE_WORDS = {
     "快乐", "高兴", "喜悦", "幸福", "平静", "安心", "感恩", "感激", "希望",
     "满足", "温暖", "轻松", "喜欢", "爱", "美好", "明亮", "欣慰", "治愈",
@@ -43,7 +27,6 @@ NEGATIVE_WORDS = {
     "悲伤", "难过", "痛苦", "焦虑", "愤怒", "孤独", "寂寞", "恐惧", "羞耻",
     "疲惫", "疲惫不堪", "绝望", "无助", "压抑", "失落", "沮丧", "愧疚", "自责",
 }
-# 情绪强度修饰（否定与程度）
 NEGATION = {"不", "没", "无", "没有"}
 AMPLIFIER = {"很", "非常", "极其", "特别", "太", "十分", "格外"}
 DIMINISHER = {"有点", "稍微", "略", "些微", "一点点"}
@@ -78,7 +61,6 @@ def extract_date(text):
 
 
 def sentiment_score(text):
-    """简单词典法情感得分，范围约 [-1, 1]。"""
     score = 0.0
     hits = 0
     for w in POSITIVE_WORDS:
@@ -132,7 +114,7 @@ def main():
     entries = []
     for idx, item in enumerate(manifest["files"]):
         text = item.get("content", "")
-        # 优先使用 frontmatter 中的日期字段，其次从正文提取
+        # frontmatter 里的日期是作者自己写的，比正文里随手提到的日期可靠
         date = item.get("date") or extract_date(text)
         score, label, _ = sentiment_score(text)
         entries.append({
@@ -146,11 +128,9 @@ def main():
             "sentiment_label": label,
         })
 
-    # 时间范围
     dated = [e for e in entries if e["date_guess"]]
     date_range = [min(e["date_guess"] for e in dated), max(e["date_guess"] for e in dated)] if dated else []
 
-    # 时间槽分布
     slot_dist = Counter(e["time_slot"] for e in entries if e["time_slot"])
     season_dist = Counter(s for e in entries for s in e["seasons"])
 
@@ -162,7 +142,7 @@ def main():
         "season_distribution": dict(season_dist),
         "sentiment_curve": [{"file": e["file"], "score": e["sentiment_score"],
                              "label": e["sentiment_label"]} for e in entries],
-        # 方法说明：情感曲线为规则词典法，非模型推断，报告须如实标注
+        # 词典法靠词频加减，读不出反讽与否定语境，下游引用这组数字时必须知道它的边界
         "method": {
             "sentiment": "规则词典法（内置正负情绪词典 + 频率归一化到 [-1,1]）",
             "limitation": "词典规模有限，不区分反讽/否定语境，仅作粗粒度情感倾向，"
