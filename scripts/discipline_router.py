@@ -175,7 +175,7 @@ def main():
             "evidence": {did: (llm_evidence.get(did) or hit_map.get(did) or []) for did in core},
             "hit_counts": {did: len(hit_map.get(did) or []) for did in core},
             "reasons": reasons,
-            "method": "LLM 标记层判定路由 + 脚本证据命中计数（不再 avg*1.2 一刀切）",
+            "method": "LLM 标记层判定路由 + 脚本证据命中计数",
         }
     else:
         # 没有标记层时按平均分划线，命中次数高的进核心，命中过的进次要
