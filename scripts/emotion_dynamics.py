@@ -69,7 +69,7 @@ def _rise_rate(vals):
 
 
 def _recovery_rate(vals):
-    """情绪落得多快：只看下行的那几步。"""
+    """情绪跌得多快：只看下行的那几步。"""
     drops = [vals[i - 1] - vals[i] for i in range(1, len(vals)) if vals[i - 1] - vals[i] > 0]
     if not drops:
         return {"level": "high", "comment": "无明显回落，情绪未平复"}
