@@ -1,18 +1,3 @@
-#!/usr/bin/env python3
-"""
-ingest.py — 扫描与解析随笔/日记文本文件
-
-功能：
-- 递归扫描目录中的 .txt / .md / .doc / .docx
-- 编码识别（UTF-8 / GBK / GB18030 等）
-- 清洗：frontmatter、HTML 标签、孤立页码、重复空行
-- 隐私脱敏（按 config.yaml 的 privacy_patterns）
-- 输出 files_manifest.json
-
-用法：
-    python ingest.py --target-dir <目录> [--out <输出目录>] [--config <config.yaml>]
-"""
-
 import argparse
 import json
 import re
@@ -37,7 +22,6 @@ PAGE_NUMBER_RE = re.compile(r"^\s*(?:第\s*\d+\s*页(?:\s*/\s*\d+)?|\d+)\s*$")
 
 
 def load_config(config_path):
-    """加载 config.yaml，返回 dict；缺失时返回默认。"""
     cfg = {
         "supported_extensions": DEFAULT_EXTENSIONS,
         "strip_frontmatter": True,
@@ -55,12 +39,16 @@ def load_config(config_path):
         else:
             with open(config_path, "r", encoding="utf-8") as f:
                 user_cfg = yaml.safe_load(f) or {}
+            # 只收已知键：配置里拼错的名字不该悄悄改掉默认行为
             cfg.update({k: v for k, v in user_cfg.items() if k in cfg})
     return cfg
 
 
 def detect_encoding(data: bytes):
-    """按优先顺序尝试常见中文编码。"""
+    """按顺序逐个试解码。
+
+    UTF-8 必须排在前面：GB18030 几乎能吞下任意字节序列，放在前面会把 UTF-8 正文读成乱码。
+    """
     for enc in ("utf-8-sig", "utf-8", "gb18030", "gbk", "big5"):
         try:
             return data.decode(enc), enc
@@ -75,7 +63,7 @@ FRONTMATTER_DATE_RE = re.compile(
 
 
 def extract_frontmatter_date(text: str) -> str:
-    """在清洗前从 frontmatter 提取日期字段，供时间线使用。"""
+    """日期必须在清洗之前取走，frontmatter 随后会被整段删掉。"""
     m = FRONTMATTER_RE.search(text)
     if not m:
         return ""
@@ -111,14 +99,13 @@ def clean_text(text: str, cfg: dict) -> str:
 def apply_privacy(text: str, cfg: dict) -> str:
     if not cfg.get("privacy_mode", True):
         return text
-    # 显式名单脱敏（姓名/地址：中文无法靠正则可靠识别，须用户显式列出）
+    # 姓名与地址没法用正则可靠识别，只能按用户给出的名单逐个替换
     for name in cfg.get("privacy_names", []):
         if name:
             text = text.replace(str(name), "[已脱敏]")
     for addr in cfg.get("privacy_addresses", []):
         if addr:
             text = text.replace(str(addr), "[已脱敏]")
-    # 正则脱敏（电话/身份证/邮箱等）
     for item in cfg.get("privacy_patterns", []):
         if isinstance(item, dict):
             pat = item.get("pattern")
@@ -142,14 +129,13 @@ def read_text_file(path: Path, cfg: dict):
 
 
 def read_docx(path: Path, cfg: dict):
-    """读取 .docx；.doc 老格式尽力而为。"""
     try:
         from docx import Document  # python-docx
         doc = Document(str(path))
         text = "\n".join(p.text for p in doc.paragraphs)
         return text, "docx"
     except Exception as e:
-        # 回退：老 .doc 尝试 antiword / textract（未安装则记录错误）
+        # 单篇读不出来不该中断整批扫描，把失败原因留在清单里便于回头排查
         text = f"[读取失败] {path.name}: {e}"
         return text, "doc-fallback"
 
@@ -159,9 +145,8 @@ def scan(target_dir: Path, cfg: dict):
     manifest = []
     for ext in exts:
         for p in sorted(target_dir.rglob(f"*{ext}")):
-            # 跳过输出目录自身，避免重复解析生成的 JSON/HTML
             manifest.append(p)
-    # 去重（不同大小写/重复 glob）
+    # 扩展名列表里可能有重复项，同一路径只收一次
     seen = set()
     unique = []
     for p in manifest:
