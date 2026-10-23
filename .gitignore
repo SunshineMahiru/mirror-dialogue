@@ -16,6 +16,9 @@ output/
 # ===== 第三方参考源码（仅本地学习用，各有独立 license）=====
 reference-projects/
 
+# ===== 本地协作规则（各机器自行维护，不入库）=====
+AGENTS.md
+
 # ===== 工具 / IDE 本地目录 =====
 .workbuddy/
 .codebuddy/
