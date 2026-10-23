@@ -1,19 +1,3 @@
-#!/usr/bin/env python3
-"""
-knowledge_lookup.py — 学科知识检索与来源记录
-
-功能：
-- network 模式：提示联网检索（本脚本不直接联网，而是生成检索指令与来源模板，
-  由主 agent 依据知识查找规范执行；来源必须记录作者/标题/年份/页码或 URL/访问日期）
-- local 模式：在本地知识库目录做关键词检索（文件名/内容关键词）
-- builtin 模式：使用模型内置知识，标记 "模型内部知识，未检索，需核验"
-- 输出 knowledge_sources.json，记录每个概念的来源与核验状态
-
-用法：
-    python knowledge_lookup.py --concepts <concepts.json> \
-        --source <network|local|builtin> [--local-dir <目录>] --out <输出目录>
-"""
-
 import argparse
 import json
 import sys
@@ -21,7 +5,6 @@ from pathlib import Path
 
 
 def search_local(local_dir, concept):
-    """在本地知识库目录按文件名/内容关键词检索。"""
     hits = []
     root = Path(local_dir)
     if not root.exists():
@@ -35,6 +18,7 @@ def search_local(local_dir, concept):
             text = p.read_text(encoding="utf-8", errors="ignore")
         except Exception:
             continue
+        # 只看开头两万字，够判断文档是否讲这个概念，大文件不必整篇读进来
         if concept in p.name or concept in text[:20000]:
             hits.append({"file": str(p), "matched": concept, "snippet": text[:300]})
     return hits
@@ -76,7 +60,7 @@ def main():
                     rec["note"] = "本地知识库未命中，需人工补充或标'未检索，需核验'"
             elif args.source == "builtin":
                 rec["note"] = "模型内部知识，未检索，需核验"
-            else:  # network
+            else:
                 rec["note"] = "联网检索（由主 agent 执行并记录作者/标题/年份/页码或URL/访问日期）"
             records.append(rec)
 
