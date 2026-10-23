@@ -10,7 +10,7 @@ except ImportError:
     yaml = None
 
 
-# 页面渲染要用的字段；少一个，对应段落就会空着
+# 页面渲染要用的字段；少一个，对应章节就会空着
 # 点路径表示嵌套，`[]` 表示只看列表的首个元素
 REQUIRED_SCHEMA = {
     "stats.json": {
@@ -251,7 +251,7 @@ def check_schema(data_dir, report):
             report["fail"].append(f"schema: {fname} 缺字段 {missing}")
         else:
             report["schema"][fname] = "OK"
-            report["pass"].append(f"schema: {fname} 字段对齐")
+            report["pass"].append(f"schema: {fname} 字段齐全")
 
 
 def check_file_coverage(manifest, single, report):
