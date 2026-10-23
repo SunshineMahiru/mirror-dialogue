@@ -1,26 +1,3 @@
-#!/usr/bin/env python3
-"""
-stats.py — 统计与计算（停用词 + 词性过滤 + 示例句修复版）
-
-功能：
-- 基础统计：原始字数、去空白字数、中文字符、英文单词、标点、段落、句子、
-  平均句长、阅读时长
-- 词频（jieba 分词 + 200+ 停用词 + posseg 词性过滤）
-- TF-IDF（手写实现，基于词性过滤后的名词/形容词，避免依赖 sklearn）
-- n-gram（2-gram、3-gram）
-- 共现（同段/同句窗口内共现）
-
-关键词口径：
-- `keywords` / `global_pos_filtered`：posseg 词性过滤（仅 n/nr/ns/nt/vn/an/a），无虚词
-- `word_freq` / `global`：纯词频（含虚词，仅供参考）
-- `tfidf`：TF-IDF 排序（全局关键词主要排序依据），附示例句
-
-输出：stats.json、keywords.json、ngrams.json、cooccurrence.json
-
-用法：
-    python stats.py --manifest <files_manifest.json> [--out <输出目录>] [--config <config.yaml>]
-"""
-
 import argparse
 import json
 import math
@@ -51,7 +28,7 @@ except ImportError:
 # 保留词性：名词、人名、地名、机构名、名动词、名形词、形容词
 KEEP_POS = {"n", "nr", "ns", "nt", "vn", "an", "a"}
 
-# 内置停用词（200+ 词，可用 config.stopwords_file 覆盖）
+# 内置停用词；config.stopwords_file 里的词会追加进这份集合，改不到它的内容
 BUILTIN_STOPWORDS = {
     # ---- 单字虚词 ----
     "的", "了", "是", "在", "有", "和", "与", "或", "也", "都", "就",
@@ -120,6 +97,7 @@ def load_config(cfg_path):
     if cfg_path and Path(cfg_path).exists() and yaml is not None:
         with open(cfg_path, "r", encoding="utf-8") as f:
             user = yaml.safe_load(f) or {}
+        # 只收已知键，配置里拼错的名字不会悄悄改掉默认值
         cfg.update({k: v for k, v in user.items() if k in cfg})
     return cfg
 
@@ -164,7 +142,7 @@ def base_stats(text: str, cpm: int):
 
 
 def tokenize(text: str, sw: set):
-    """基础分词：jieba.cut + 停用词 + 长度过滤（用于 n-gram / 共现 / 纯词频）。"""
+    """不做词性过滤的切分，留给 n-gram、共现与纯词频使用。"""
     if JIEBA_OK:
         tokens = [w for w in jieba.cut(text) if w.strip()]
         return [w for w in tokens if w not in sw and len(w.strip()) > 1]
@@ -173,10 +151,7 @@ def tokenize(text: str, sw: set):
 
 
 def tokenize_pos(text: str, sw: set):
-    """词性过滤分词：posseg + 停用词 + 仅保留 n/nr/ns/nt/vn/an/a。
-
-    用于关键词与 TF-IDF，确保结果不含虚词。
-    """
+    """只留名词与形容词，免得虚词挤满关键词表。"""
     if JIEBA_OK and POSSEG_OK:
         tokens = []
         for w, flag in pseg.cut(text):
@@ -189,7 +164,7 @@ def tokenize_pos(text: str, sw: set):
                 continue
             tokens.append(w)
         return tokens
-    # 降级：无 posseg 时退化为 jieba 切词 + 长度过滤（无法词性过滤，需在报告中标注）
+    # 没有 posseg 时词性过滤失效，只能退回按长度过滤
     if JIEBA_OK:
         tokens = [w for w in jieba.cut(text) if w.strip()]
         return [w for w in tokens if w not in sw and len(w.strip()) > 1]
@@ -204,7 +179,6 @@ def word_frequency(tokens):
 
 
 def attach_evidence(kw_list, sentences):
-    """为关键词表附加示例句（含该词的第一个句子，最长 60 字）。原地修改。"""
     for kw in kw_list:
         ev = ""
         for s in sentences:
@@ -216,7 +190,7 @@ def attach_evidence(kw_list, sentences):
 
 
 def tf_idf(docs, sw, top_n):
-    """手写 TF-IDF，基于词性过滤后的 tokens。docs: list[str]。"""
+    """TF-IDF 手写一份，免得为一项统计拉进 sklearn。"""
     n_docs = len(docs)
     doc_tokens = [tokenize_pos(d, sw) for d in docs]
     df = defaultdict(int)
@@ -287,9 +261,8 @@ def main():
 
         sentences = [s.strip() for s in SENT_SPLIT_RE.split(text) if s.strip()]
 
-        # 词性过滤关键词（无虚词）
+        # 词频留两份：词性过滤后的进关键词，纯词频只作对照
         kws_pos = attach_evidence(word_frequency(tokenize_pos(text, sw)), sentences)
-        # 纯词频（含虚词，仅供参考）
         kws_raw = attach_evidence(word_frequency(tokenize(text, sw)), sentences)
 
         keywords_out.append({
@@ -299,10 +272,9 @@ def main():
         })
         all_texts.append(text)
 
-    # 全局 TF-IDF（词性过滤后，作为关键词主要排序依据）
+    # 跨篇排序以 TF-IDF 为准：每篇都出现的词靠词频会被顶到前面，区分不了文章之间的差别
     tfidf_top, df_map = tf_idf(all_texts, sw, cfg.get("tfidf_top_n", 50))
 
-    # 全局 n-gram
     rng = cfg.get("ngram_range", [2, 3])
     ngram_out = {}
     if 2 in rng:
@@ -320,10 +292,8 @@ def main():
             {"ngram": list(k), "count": v} for k, v in trigram_c.most_common(30)
         ]
 
-    # 全局共现
     cooc = cooccurrence(all_texts, sw, cfg.get("cooccurrence_window", 8))
 
-    # 全局高频词（纯词频，含虚词）与词性过滤词频
     global_counter = Counter()
     global_pos_counter = Counter()
     for t in all_texts:
