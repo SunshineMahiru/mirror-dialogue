@@ -1,20 +1,3 @@
-#!/usr/bin/env python3
-"""
-emotion_dynamics.py — UED 情感动力学指标计算（标记层路径）
-
-读 LLM 标记层产出的 VAD 标注，计算每篇的 UED 动态指标。
-
-职责边界（见 methodology/emotion-dynamics.md）：
-- VAD 逐段标注 = LLM（标记层）做，见 prompts/annotate.md
-- 指标计算 = 本脚本做（home base / variability / instability / density 等）
-
-输入：emotion_annotation.json（LLM 产出）
-输出：emotion_dynamics.json（每篇 6 项指标）
-
-用法：
-    python emotion_dynamics.py --annotation <emotion_annotation.json> --out <输出目录>
-"""
-
 import argparse
 import json
 import statistics
@@ -22,7 +5,7 @@ from pathlib import Path
 
 
 def calc_metrics(segments):
-    """从 VAD 标注序列计算 UED 指标。segments: [{valence, arousal, dominance, ...}]"""
+    """按段算指标；没有标注段时直接返回 None，下游据此判断该篇缺数据。"""
     if not segments:
         return None
     vals = [s.get("valence", 0.0) for s in segments]
@@ -50,11 +33,9 @@ def calc_metrics(segments):
     dense = sum(1 for v, a in zip(vals, arous) if abs(v) > 0.3 or a > 0.6)
     density = round(dense / len(segments), 3) if segments else 0.0
 
-    # Rise / Recovery Rate：定性——找最大负→正跃迁与正→负回落
     rise_rate = _rise_rate(vals)
     recovery_rate = _recovery_rate(vals)
 
-    # Inertia：定性——偏离基线后回归的段落数
     inertia = _inertia(vals, home_base["valence"])
 
     return {
@@ -78,7 +59,7 @@ def _level(n, low_th, high_th):
 
 
 def _rise_rate(vals):
-    """情感上升速率：统计相邻跃迁中负→正的最大斜率（定性）。"""
+    """情绪升得多快：只看上行的那几步。"""
     rises = [vals[i] - vals[i - 1] for i in range(1, len(vals)) if vals[i] - vals[i - 1] > 0]
     if not rises:
         return {"level": "low", "comment": "无明显正向跃迁"}
@@ -88,7 +69,7 @@ def _rise_rate(vals):
 
 
 def _recovery_rate(vals):
-    """情感恢复速率：统计相邻跃迁中正→负的回落（定性）。"""
+    """情绪落得多快：只看下行的那几步。"""
     drops = [vals[i - 1] - vals[i] for i in range(1, len(vals)) if vals[i - 1] - vals[i] > 0]
     if not drops:
         return {"level": "high", "comment": "无明显回落，情绪未平复"}
@@ -98,7 +79,7 @@ def _recovery_rate(vals):
 
 
 def _inertia(vals, base):
-    """惯性：偏离基线后是否快速回归。统计偏离基线(|v-base|>0.3)的连续段数。"""
+    """惯性：离开基线之后能不能自己回来，按连续偏离的段数计。"""
     runs = 0
     in_run = False
     for v in vals:
