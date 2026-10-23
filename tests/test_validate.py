@@ -1,11 +1,3 @@
-#!/usr/bin/env python3
-"""
-tests/test_validate.py — 闸门与 schema 校验的单元测试
-
-运行：python -m unittest discover tests
-或：  python tests/test_validate.py
-"""
-
 import json
 import subprocess
 import sys
@@ -24,7 +16,7 @@ def new_report():
 
 
 class TestMirrorDialogueChapter(unittest.TestCase):
-    """G1：镜面对话专章字段名必须对齐 mirror_dialogue_chapter（五部分 ≥1500 字）。"""
+    """专章字段名写成 mirror_dialogue_overview 时模板匹配不到，会渲染出一段空白。"""
 
     def test_wrong_field_name_fails(self):
         r = new_report()
@@ -34,7 +26,7 @@ class TestMirrorDialogueChapter(unittest.TestCase):
 
     def test_missing_part_fails(self):
         r = new_report()
-        ga = {"mirror_dialogue_chapter": {"addressee_spectrum": []}}  # 缺四部分
+        ga = {"mirror_dialogue_chapter": {"addressee_spectrum": []}}
         V.check_mirror_dialogue_chapter(ga, r)
         self.assertTrue(any("缺五部分" in f for f in r["fail"]))
 
@@ -48,14 +40,14 @@ class TestMirrorDialogueChapter(unittest.TestCase):
             "self_talk_patterns": {"judgment": [], "comfort": [],
                                    "inquiry": [], "alternation": "镜"},
             "silence_archaeology": [{"cue": "省略号", "location": "第1段", "unsaid": "镜"}],
-            "dialogue_ethics": "镜" * 1600,  # 中文字符 ≥1500
+            "dialogue_ethics": "镜" * 1600,
         }
         V.check_mirror_dialogue_chapter({"mirror_dialogue_chapter": mdc}, r)
         self.assertFalse(any("mirror_dialogue_chapter" in f for f in r["fail"]))
 
 
 class TestCrossDisciplineMulti(unittest.TestCase):
-    """G2：跨学科综合的多元解释与综合模型必须存在。"""
+    """多元解释或综合模型缺失时，跨学科综合只剩目录上的一个标题。"""
 
     def test_missing_multi_explanations_fails(self):
         r = new_report()
@@ -79,7 +71,7 @@ class TestCrossDisciplineMulti(unittest.TestCase):
 
 
 class TestSingleMirrorFields(unittest.TestCase):
-    """G1：单篇 mirror_dialogue 必须含 pronoun_map / self_naming_change。"""
+    """字段名写错时，代词指认与自我称谓变化会在报告里悄悄消失。"""
 
     def test_missing_pronoun_map_fails(self):
         r = new_report()
@@ -89,7 +81,7 @@ class TestSingleMirrorFields(unittest.TestCase):
 
 
 class TestVerifySwitch(unittest.TestCase):
-    """P3：未联网时，文献「未核验」只 warn 不 fail。"""
+    """离线时无从核验，如实标注「未检索」算不得编造。"""
 
     def test_verify_off_warns_not_fails(self):
         r = new_report()
@@ -110,16 +102,16 @@ class TestVerifySwitch(unittest.TestCase):
 
 
 class TestGateOnlyExitCode(unittest.TestCase):
-    """P0：浅产物应被事前闸门拦截（exit 1）。用临时目录构造，不依赖 output/ 现状。"""
+    """内容空泛的产物必须在渲染前被拦住，否则交付的是一份没人愿意读的报告。"""
 
     def test_gate_blocks_shallow_output(self):
         with tempfile.TemporaryDirectory() as d:
-            # 构造「结构完整但内容浅」的 single_analysis.json（summary 过短、mirror 缺字段）
+            # 结构齐全、内容单薄的产物
             shallow_single = [{
                 "file": "a.txt", "title": "a", "date_guess": "",
-                "summary": "太短",  # < 1200，触发 depth fail
-                "mirror_dialogue": {"pronouns": {}},  # 缺 pronoun_map 等，触发字段 fail
-                "quotes": [],  # < 5，触发 depth fail
+                "summary": "太短",
+                "mirror_dialogue": {"pronouns": {}},
+                "quotes": [],
             }]
             Path(d, "single_analysis.json").write_text(
                 json.dumps(shallow_single, ensure_ascii=False), encoding="utf-8")
@@ -131,7 +123,7 @@ class TestGateOnlyExitCode(unittest.TestCase):
             self.assertEqual(r.returncode, 1, "浅产物应被闸门拦截（exit 1）")
 
     def test_gate_passes_deep_output(self):
-        # 构造一份「内容达标」的 single_analysis，验证 gate 不再因 depth 拦截
+        # 单篇内容达标后，闸门不应再报 depth 与字段缺失
         with tempfile.TemporaryDirectory() as d:
             deep_single = [{
                 "file": "a.txt", "title": "a", "date_guess": "",
@@ -152,8 +144,7 @@ class TestGateOnlyExitCode(unittest.TestCase):
                  "--data-dir", d, "--config", str(ROOT / "config.yaml"),
                  "--gate-only"],
                 capture_output=True, text=True)
-            # 单篇已达标，但缺其他 JSON 会触发 schema fail，仍 exit 1——本测试只验证
-            # 不再出现 depth/mirror 的 fail（通过检查 stderr/stdout 不包含 depth fail）
+            # 其余 JSON 缺失仍会 exit 1，这条用例只关心 depth 与字段两类 fail
             self.assertNotIn("depth:", r.stdout + r.stderr, "深度达标后不应再有 depth fail")
             self.assertNotIn("mirror_dialogue: a.txt 缺字段", r.stdout + r.stderr)
 
