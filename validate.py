@@ -1,26 +1,3 @@
-#!/usr/bin/env python3
-"""
-validate.py — 自检脚本：schema 对齐 + 质量清单脚本化 + 事前闸门
-
-功能：
-1. schema 对齐校验：断言 build_html.py 消费的字段在 LLM/脚本 JSON 中都存在，
-   避免 build_html 静默丢字段。
-2. 质量清单校验：文件覆盖、引用可定位、学科证据数量、文献来源、隐私脱敏、
-   降级模式标注、学科八要素。
-3. 内容深度门禁：summary/mirror_dialogue/analysis/key_findings 等硬门槛。
-4. 事前闸门（--gate-only）：跳过 HTML 结构检查（build 前 HTML 尚未生成），
-   只跑内容层面拦截；fail 非空 exit 1，供 run.py 在 build 前拦截。
-5. 文献核验开关：verify_references 关联 allow_network；未联网时「未核验」只 warn
-   不 fail（诚实标注不算编造）。
-
-输出 validation_report.json（含 pass/fail/warn 明细）。
-
-用法：
-    python validate.py --data-dir ./output [--config ./config.yaml] \
-        [--manifest ./output/files_manifest.json] [--html ./output/report.html] \
-        [--gate-only]
-"""
-
 import argparse
 import json
 import re
@@ -33,8 +10,8 @@ except ImportError:
     yaml = None
 
 
-# build_html.py 模板（templates/report.html.j2）实际消费的字段路径
-# 点路径表示嵌套；列表元素用 [] 表示。
+# 页面渲染要用的字段；少一个，对应段落就会空着
+# 点路径表示嵌套，`[]` 表示只看列表的首个元素
 REQUIRED_SCHEMA = {
     "stats.json": {
         "global.total_files": "文件数",
@@ -90,7 +67,7 @@ REQUIRED_SCHEMA = {
     },
 }
 
-# 隐私模式默认正则（与 config.yaml 一致，用于脱敏自检）
+# 隐私扫描用固定规则，不跟随 config 变化：脱敏配置被改坏了，这层检查也不能跟着失效
 DEFAULT_PRIVACY = {
     "手机号": r"1[3-9]\d{9}",
     "身份证": r"\d{17}[\dXx]",
@@ -106,9 +83,9 @@ def load_json(path):
 
 
 def get_by_path(obj, path):
-    """按点路径取嵌套值；[] 表示进入列表首个元素检查。
+    """按点路径取嵌套值。
 
-    兼容 `files[].file`、`[].core_questions[]` 这类写法：把 `xxx[]` 拆成 `xxx` 与 `[]`。
+    `files[].file` 这类写法要先分成 `files` 与 `[]` 两段，否则会当成一个键名去找。
     """
     parts = []
     for tok in path.split("."):
@@ -122,8 +99,7 @@ def get_by_path(obj, path):
         if part == "[]":
             if isinstance(cur, list):
                 if not cur:
-                    # 空列表视为“字段存在”（模板 for 循环会安全跳过），
-                    # 跳过首元素字段检查
+                    # 空列表同样代表字段存在：模板的 for 循环遇到空列表只会输出空内容
                     return cur
                 cur = cur[0]
             else:
@@ -136,22 +112,20 @@ def get_by_path(obj, path):
 
 
 def zh_len(s):
-    """中文字符数（不含空白）。用于内容深度门禁。"""
+    """汉字个数，深度门槛按它计数（空白与标点不算）。"""
     if not isinstance(s, str):
         return 0
     return len(re.findall(r"[\u4e00-\u9fff]", s))
 
 
 def flatten(obj) -> str:
-    """把 dict/list 展平为字符串，用于「展开字数」统计。"""
     if isinstance(obj, str):
         return obj
     return json.dumps(obj, ensure_ascii=False)
 
 
 # ---------------------------------------------------------------------------
-# 机器可读校验 schema：深度阈值与要点清单的单一事实源（schema.json）。
-# 缺失或解析失败时回退到 DEFAULT_SCHEMA（与历史硬编码一致），保证行为不倒退。
+# schema.json 缺失或损坏时用下面的默认阈值顶上，检查逻辑不至于整段失效
 # ---------------------------------------------------------------------------
 DEFAULT_SCHEMA = {
     "depth": {
@@ -190,7 +164,6 @@ _SCHEMA_CACHE = None
 
 
 def load_schema():
-    """加载 schema.json（相对 validate.py 所在目录）；失败回退 DEFAULT_SCHEMA。"""
     global _SCHEMA_CACHE
     if _SCHEMA_CACHE is not None:
         return _SCHEMA_CACHE
@@ -207,7 +180,6 @@ def load_schema():
 
 
 def _sd(key, default):
-    """取 schema.depth 下的嵌套值，缺失时回退 default。"""
     d = load_schema().get("depth", {})
     for k in key.split("."):
         if isinstance(d, dict) and k in d:
@@ -218,19 +190,9 @@ def _sd(key, default):
 
 
 def check_content_depth(single, discipline, global_analysis, report):
-    """内容深度门禁（字数兜底红线）：拦截「结构完整但内容浅」的报告。
+    """拦住结构齐全、内容单薄的报告：字数只是兜底下限，算不得目标值，也没有上限。
 
-    深度判定见 methodology/depth.md：**要点覆盖为主、字数兜底为辅**。本函数只做
-    「字数兜底」这一层；「要点覆盖」由 check_single_mirror_fields /
-    check_mirror_dialogue_chapter / check_cross_discipline_multi 承担。
-
-    兜底红线（基础下限，非目标值，不设上限）：
-    - 单篇 summary 中文字符 ≥ 1200
-    - 单篇 mirror_dialogue 展开 ≥ 500 字
-    - 单篇 quotes ≥ 5 条，每条必须有 interpretation（或 explanation）
-    - 学科 analysis 中文字符 ≥ 1500
-    - 学科 counter_evidence / methods 不得为空
-    - 全局 key_findings ≥ 10 条
+    阈值全部从 schema.json 读取，调整门槛时不必改动代码。
     """
     min_summary = _sd("single.summary.min_zh_chars", 1200)
     min_md = _sd("single.mirror_dialogue.min_zh_chars", 500)
@@ -270,7 +232,7 @@ def check_content_depth(single, discipline, global_analysis, report):
         kf = global_analysis.get("key_findings", [])
         if len(kf) < min_kf:
             report["fail"].append(f"depth: key_findings {len(kf)} 条 < {min_kf}")
-    # 未触发任何深度失败时记 pass（只在有数据时）
+    # 两类产物都在、又没有深度失败，才记一条通过
     if single and discipline:
         if not any(x.startswith("depth:") for x in report["fail"]):
             report["pass"].append("depth: 内容深度门禁全部达标")
@@ -321,7 +283,7 @@ def check_discipline_evidence(plan, discipline, min_ev, report):
         report["fail"].append("discipline: 缺少 discipline_plan 或 discipline_analysis")
         return
     core = plan.get("core_disciplines", [])
-    # 兼容 discipline 字段存 id 或 name 两种写法
+    # 学科 id 与显示名都可能出现在产物里，两种都要查得到
     by_id = {d.get("discipline", ""): d for d in discipline}
     by_name = {d.get("name", ""): d for d in discipline}
     for did in core:
@@ -334,7 +296,6 @@ def check_discipline_evidence(plan, discipline, min_ev, report):
             report["fail"].append(f"discipline: {did} 证据 {n_ev} < {min_ev}")
         else:
             report["pass"].append(f"discipline: {did} 证据 {n_ev} 条达标")
-    # 学科八要素检查
     for d in discipline:
         dname = d.get("discipline", "")
         required = ["core_questions", "concepts", "methods", "evidence", "analysis",
@@ -349,8 +310,7 @@ def check_references_verified(discipline, plan, report, verify_on=True):
         return
     core = set(plan.get("core_disciplines", [])) if plan else set()
     unverified = []
-    # 逐核心学科检查：核心学科 references 非空且全部未核验 → fail。
-    # 不比较「未核验总数」，避免「核心全未核验 + 辅助也有未核验」绕过红线。
+    # 逐个核心学科判定：只看未核验总数，会掩盖某个核心学科一条都没核验的情形
     for d in discipline:
         did = d.get("discipline", "")
         is_core = did in core or d.get("name") in core
@@ -365,7 +325,7 @@ def check_references_verified(discipline, plan, report, verify_on=True):
                     "违反「禁止编造/必须可追溯」红线，须联网或本地库核验后重跑"
                 )
             else:
-                # P3：未联网/关闭核验时，诚实标注「需核验」不算编造，只 warn 不 fail
+                # 离线时无从核验，如实标注「未检索」算不得编造
                 report["warn"].append(
                     f"references: 核心学科 {did} 的 {len(refs)} 条文献未核验"
                     "（verify_references 关闭或未联网，只标「未检索，需核验」，不判 fail）"
@@ -380,11 +340,10 @@ def check_references_verified(discipline, plan, report, verify_on=True):
 
 
 def check_privacy(manifest, report):
-    """隐私二次保险：对比原始文件与脱敏后 content。
+    """重新读取原始文件，与脱敏后的正文逐一对照。
 
-    绕过 manifest 已脱敏的 content，直接读原始文件（manifest.file 指向原始路径），
-    若原始文件含隐私而脱敏后 content 仍含该隐私，则判定脱敏失效（fail）。
-    原始路径不存在/读取失败时记 warn（不静默跳过），避免隐私检查悄悄失效。
+    只信 manifest 里的 content 等于自己给自己判卷：原始路径读不到时记 warn，
+    让检查范围的缺口暴露出来，不至于悄悄失效。
     """
     if not manifest:
         return
@@ -432,18 +391,16 @@ def check_degraded(stats, report):
 
 
 def check_cross_discipline(cross, report):
-    """跨学科综合四数组最小长度断言，避免空报告被放过。"""
+    """共识与进一步问题至少各一项，避免空报告通过。"""
     if not cross:
         report["fail"].append("cross: 缺少 cross_discipline.json")
         return
-    # 共识/进一步问题至少 1 项
     for key in ("consensus", "further_questions"):
         val = cross.get(key)
         if not isinstance(val, list) or len(val) < 1:
             report["fail"].append(f"cross: {key} 为空或缺失（至少 1 项）")
         else:
             report["pass"].append(f"cross: {key} {len(val)} 项")
-    # 分歧/盲点键必须存在且为列表；为空则提示确认
     for key in ("disagreement", "blindspots"):
         if key not in cross:
             report["fail"].append(f"cross: {key} 字段缺失")
@@ -454,11 +411,7 @@ def check_cross_discipline(cross, report):
 
 
 def check_cross_discipline_multi(cross, report):
-    """校验跨学科综合的多元解释与综合模型（cross_discipline.md 硬要求）。
-
-    之前漏检：multi_explanations ≥8 组、synthesis_model、complementary、
-    limitations_ethics。这几项缺失意味着跨学科综合名存实亡。
-    """
+    """多元解释不足八组、缺少综合模型时，跨学科综合只是一句空话。"""
     if not cross:
         return
     min_me = _sd("cross.multi_explanations.min_count", 8)
@@ -481,10 +434,10 @@ def check_cross_discipline_multi(cross, report):
 
 
 def check_mirror_dialogue_chapter(global_analysis, report):
-    """校验全局镜面对话专章（本 Skill 核心诉求，reduce_global.md 要求五部分 ≥1500 字）。
+    """镜面对话专章是这个 Skill 的核心诉求：五部分缺一或字数不足都不放行。
 
-    字段名必须是 mirror_dialogue_chapter；历史上产物误写为 mirror_dialogue_overview，
-    导致模板渲染不到、专章空占位。此处强制对齐。
+    字段名写成 mirror_dialogue_overview 时模板匹配不到，专章会渲染成一段空占位，
+    读者看到的是完整目录下的空白。
     """
     if not global_analysis:
         report["fail"].append("mirror_dialogue_chapter: 缺少 global_analysis.json")
@@ -510,12 +463,7 @@ def check_mirror_dialogue_chapter(global_analysis, report):
 
 
 def check_single_mirror_fields(single, report):
-    """校验单篇 mirror_dialogue 字段与 map_single.md schema 对齐。
-
-    map_single.md 要求 addressee / addressee_trajectory / pronoun_map /
-    self_naming_change / self_talk / unsaid。历史上产物误用 pronouns/conflicts/
-    responses，导致代词指认与自我称谓变化两个核心维度丢失。
-    """
+    """字段名写错时，代词指认与自我称谓变化这两个维度会在页面里静默消失。"""
     if not single:
         return
     required = _sd("single.required_mirror_fields",
@@ -531,10 +479,7 @@ def check_single_mirror_fields(single, report):
 
 
 def check_html(html_path, report):
-    """解析 HTML 结构：章节锚点、表格、blockquote、折叠数量。
-
-    html_path 为 None 时默认 data_dir/report.html；调用方可传自定义 --html 路径。
-    """
+    """页面要能被读者直接翻阅：章节锚点、表格、引用块缺一项，翻到那里就是空的。"""
     if not html_path or not Path(html_path).exists():
         report["warn"].append(f"html: {html_path or 'report.html'} 不存在（先跑 build_html 再校验）")
         return
@@ -564,7 +509,7 @@ def check_html(html_path, report):
     else:
         report["pass"].append(f"html: {n_details} 个折叠章节")
 
-    # 统计:分析字数比（硬性规则 12：统计表格与分析正文字数比 ≤ 1:2，否则报告主体是统计）
+    # 附录占掉正文一半以上时，读者翻到的就只是一堆统计表
     def _sec_text(sid):
         m = re.search(rf'<section\s+id="{sid}"[^>]*>(.*?)</section>', html, re.DOTALL)
         return m.group(1) if m else ""
@@ -598,8 +543,7 @@ def main():
         with open(args.config, "r", encoding="utf-8") as f:
             cfg = yaml.safe_load(f) or {}
     min_ev = cfg.get("min_evidence_per_core", 3)
-    # P3：文献核验开关，关联联网。默认开启；未联网（allow_network:false）则自动关闭，
-    # 此时「未核验」只 warn 不 fail（诚实标注不算编造）。
+    # 离线时无法核验，allow_network 关闭就自动降为只提示
     verify_on = bool(cfg.get("verify_references", True)) and bool(cfg.get("allow_network", False))
 
     data_dir = Path(args.data_dir)
@@ -625,7 +569,7 @@ def main():
                         load_json(data_dir / "global_analysis.json"), report)
     check_mirror_dialogue_chapter(load_json(data_dir / "global_analysis.json"), report)
     check_single_mirror_fields(load_json(data_dir / "single_analysis.json"), report)
-    # 事前闸门模式跳过 HTML 检查：build 前 HTML 尚未生成，只做内容层面的拦截。
+    # 渲染之前还没有页面可查，闸门只看内容
     if not args.gate_only:
         html_path = args.html or str(data_dir / "report.html")
         check_html(html_path, report)
