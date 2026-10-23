@@ -342,8 +342,8 @@ def check_references_verified(discipline, plan, report, verify_on=True):
 def check_privacy(manifest, report):
     """重新读取原始文件，与脱敏后的正文逐一对照。
 
-    只信 manifest 里的 content 等于自己给自己判卷：原始路径读不到时记 warn，
-    让检查范围的缺口暴露出来，不至于悄悄失效。
+    只看 manifest 里存着的 content，等于让产物自己证明自己；原始路径读不到时记 warn，
+    把检查没覆盖到的范围露出来。
     """
     if not manifest:
         return

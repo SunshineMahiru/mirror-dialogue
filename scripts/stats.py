@@ -28,7 +28,7 @@ except ImportError:
 # 保留词性：名词、人名、地名、机构名、名动词、名形词、形容词
 KEEP_POS = {"n", "nr", "ns", "nt", "vn", "an", "a"}
 
-# 内置停用词；config.stopwords_file 里的词会追加进这份集合，改不到它的内容
+# 内置停用词；config.stopwords_file 里的词只会追加进来，替换不掉这份清单
 BUILTIN_STOPWORDS = {
     # ---- 单字虚词 ----
     "的", "了", "是", "在", "有", "和", "与", "或", "也", "都", "就",

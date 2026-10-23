@@ -12,7 +12,7 @@ except ImportError:
 
 SCRIPTS_DIR = Path(__file__).resolve().parent / "scripts"
 
-# 分析层的四份产物，缺一份就说明分析还没做完
+# 四份分析产物，缺一份就说明分析还没做完
 LLM_JSON = [
     "single_analysis.json",
     "global_analysis.json",
@@ -158,7 +158,7 @@ def main():
 
     # 产物齐全才渲染，免得交付一份只有统计表的报告
     if args.run_llm_check:
-        # 渲染前先拦内容，使不合格的报告没有机会成页
+        # 渲染前先拦内容，免得一份不合格的报告被当成成品发出去
         gate_rc = run_gate(out, args.config)
         if gate_rc != 0 and not args.force:
             print("\n[闸门] validate.py 检测到 fail，已拒绝渲染 HTML。")

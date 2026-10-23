@@ -102,7 +102,7 @@ class TestVerifySwitch(unittest.TestCase):
 
 
 class TestGateOnlyExitCode(unittest.TestCase):
-    """内容空泛的产物必须在渲染前被拦住，否则交付的是一份没人愿意读的报告。"""
+    """内容空泛的产物必须在渲染前被拦住，否则成稿只剩标题与空表格。"""
 
     def test_gate_blocks_shallow_output(self):
         with tempfile.TemporaryDirectory() as d:
