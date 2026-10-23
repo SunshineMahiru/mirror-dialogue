@@ -280,8 +280,7 @@ def main():
     if annotation is not None:
         all_quotes, all_emphasis, per_file, total_chars = annotate_from_markup(manifest, annotation)
         method = {
-            "judgement": "LLM 标记层判定（annotation.json）+ 脚本精确定位/计数，"
-                         "脚本不再用启发式判定「什么算引用」",
+            "judgement": "LLM 标记层判定（annotation.json）+ 脚本精确定位与计数",
             "source": "annotation.json",
         }
     else:
