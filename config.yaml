@@ -5,7 +5,7 @@
 
 # ---- 输入输出 ----
 target_dir: ""            # 待分析目录；命令行未给 --target-dir 时使用
-output_dir: "./output"    # JSON 与 HTML 输出目录
+output_dir: "./output"    # 生成目录（已忽略）；处理真实材料时建议用 --out 指向项目外
 output_html: "./output/report.html"   # 最终 HTML 报告路径
 
 # ---- 隐私 ----

@@ -21,6 +21,7 @@ Core design principle: **methodology sets the skeleton, the LLM fills the flesh.
 - **Quote analysis**: judging what counts as a quote, source guessing, and function analysis (must be specific to context).
 - **Pre-flight gate**: `validate.py --gate-only` blocks "structurally complete but shallow" reports before HTML generation; insufficient depth is rejected by default.
 - **Privacy redaction**: regex for phone / ID / email / landline plus explicit name / address lists.
+- **Artifact isolation**: `output/`, input material directories and local knowledge files are gitignored; for real material, point `--out` to a directory outside the repository.
 - **Reference verification switch**: verify real references when online; otherwise honestly mark "not retrieved, needs verification" — never fabricate.
 
 ## Installation & Usage
