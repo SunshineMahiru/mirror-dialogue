@@ -2,7 +2,6 @@ import argparse
 import json
 import math
 import re
-import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 
@@ -201,10 +200,9 @@ def attach_evidence(kw_list, sentences):
     return kw_list
 
 
-def tf_idf(docs, sw, top_n):
+def tf_idf(doc_tokens, top_n):
     """TF-IDF 手写一份，免得为一项统计拉进 sklearn。"""
-    n_docs = len(docs)
-    doc_tokens = [tokenize_pos(d, sw) for d in docs]
+    n_docs = len(doc_tokens)
     df = defaultdict(int)
     for toks in doc_tokens:
         for w in set(toks):
@@ -222,7 +220,8 @@ def tf_idf(docs, sw, top_n):
     for s in scores:
         for w, v in s.items():
             global_scores[w] += v
-    top = [{"word": w, "score": round(v, 6)} for w, v in global_scores.most_common(top_n)]
+    ranked = sorted(global_scores.items(), key=lambda kv: (-kv[1], kv[0]))[:top_n]
+    top = [{"word": w, "score": round(v, 6)} for w, v in ranked]
     return top, df
 
 
@@ -230,10 +229,9 @@ def ngrams(tokens, n):
     return Counter(tuple(tokens[i:i + n]) for i in range(len(tokens) - n + 1))
 
 
-def cooccurrence(texts, sw, window, top_n):
+def cooccurrence(token_lists, window, top_n):
     pair_count = Counter()
-    for text in texts:
-        toks = tokenize(text, sw)
+    for toks in token_lists:
         for i in range(len(toks)):
             for j in range(i + 1, min(i + window + 1, len(toks))):
                 a, b = toks[i], toks[j]
@@ -263,6 +261,13 @@ def main():
     stats_out = []
     keywords_out = []
     all_texts = []
+    token_cache = {}
+
+    def cached(text):
+        """同一篇文本只分词一次，词频、TF-IDF、n-gram、共现共用结果。"""
+        if text not in token_cache:
+            token_cache[text] = (tokenize(text, sw), tokenize_pos(text, sw))
+        return token_cache[text]
 
     for item in manifest["files"]:
         text = item.get("content", "")
@@ -274,8 +279,9 @@ def main():
         sentences = [s.strip() for s in SENT_SPLIT_RE.split(text) if s.strip()]
 
         # 词频留两份：词性过滤后的进关键词，纯词频只作对照
-        kws_pos = attach_evidence(word_frequency(tokenize_pos(text, sw)), sentences)
-        kws_raw = attach_evidence(word_frequency(tokenize(text, sw)), sentences)
+        raw_tokens, pos_tokens = cached(text)
+        kws_pos = attach_evidence(word_frequency(pos_tokens), sentences)
+        kws_raw = attach_evidence(word_frequency(raw_tokens), sentences)
 
         keywords_out.append({
             "file": item.get("name"), "path": item.get("file"),
@@ -285,33 +291,36 @@ def main():
         all_texts.append(text)
 
     # 跨篇排序以 TF-IDF 为准：每篇都出现的词靠词频会被顶到前面，区分不了文章之间的差别
-    tfidf_top, df_map = tf_idf(all_texts, sw, cfg.get("tfidf_top_n", 50))
+    tfidf_top, df_map = tf_idf(
+        [cached(t)[1] for t in all_texts], cfg.get("tfidf_top_n", 50))
 
     rng = cfg.get("ngram_range", [2, 3])
     ngram_out = {}
     if 2 in rng:
         bigram_c = Counter()
         for t in all_texts:
-            bigram_c.update(ngrams(tokenize(t, sw), 2))
+            bigram_c.update(ngrams(cached(t)[0], 2))
         ngram_out["bigram"] = [
             {"ngram": list(k), "count": v} for k, v in bigram_c.most_common(30)
         ]
     if 3 in rng:
         trigram_c = Counter()
         for t in all_texts:
-            trigram_c.update(ngrams(tokenize(t, sw), 3))
+            trigram_c.update(ngrams(cached(t)[0], 3))
         ngram_out["trigram"] = [
             {"ngram": list(k), "count": v} for k, v in trigram_c.most_common(30)
         ]
 
-    cooc = cooccurrence(all_texts, sw, cfg.get("cooccurrence_window", 8),
+    cooc = cooccurrence([cached(t)[0] for t in all_texts],
+                        cfg.get("cooccurrence_window", 8),
                         cfg.get("cooccurrence_top_n", 200))
 
     global_counter = Counter()
     global_pos_counter = Counter()
     for t in all_texts:
-        global_counter.update(tokenize(t, sw))
-        global_pos_counter.update(tokenize_pos(t, sw))
+        raw_tokens, pos_tokens = cached(t)
+        global_counter.update(raw_tokens)
+        global_pos_counter.update(pos_tokens)
 
     global_sentences = [s.strip() for t in all_texts for s in SENT_SPLIT_RE.split(t) if s.strip()]
 
@@ -346,7 +355,7 @@ def main():
             "degraded_note": ("未安装 jieba，词频/TF-IDF/n-gram/共现退化为按字切分，"
                               "多字词与词义统计精度下降") if not JIEBA_OK else "",
             "posseg": "jieba.posseg" if POSSEG_OK else "degraded（无 posseg，词性过滤失效）",
-            "keep_pos": list(KEEP_POS),
+            "keep_pos": sorted(KEEP_POS),
             "stopword_count": len(sw),
         },
     }})
@@ -355,8 +364,8 @@ def main():
         "global": global_kw,
         "global_pos_filtered": global_pos_kw,
         "tfidf": tfidf_top,
-        "df": {w: n for w, n in df_map.items()},
-        "pos_kept": list(KEEP_POS),
+        "df": {w: n for w, n in sorted(df_map.items(), key=lambda kv: (-kv[1], kv[0]))},
+        "pos_kept": sorted(KEEP_POS),
         "stopword_count": len(sw),
         "method": ("jieba.posseg 词性过滤（仅 n/nr/ns/nt/vn/an/a）+ 200+ 停用词 + 手写 TF-IDF"
                    if (JIEBA_OK and POSSEG_OK) else "按字切分降级（词性过滤失效）"),
