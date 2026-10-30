@@ -12,8 +12,13 @@ except ImportError:
 
 def load_json(path):
     if path and Path(path).exists():
-        with open(path, "r", encoding="utf-8-sig") as f:
-            return json.load(f)
+        try:
+            with open(path, "r", encoding="utf-8-sig") as f:
+                return json.load(f)
+        except json.JSONDecodeError as e:
+            print(f"[error] {path} 无法解析为 JSON（第 {e.lineno} 行第 {e.colno} 列）: {e.msg}",
+                  file=sys.stderr)
+            sys.exit(1)
     return None
 
 
@@ -70,16 +75,17 @@ def load_gate_report(data_dir):
     """读闸门报告里的 fail 项。
 
     强制渲染时要把这些问题摆在页面顶部，读者才知道手里拿的是草稿。
+    报告缺失或损坏时返回 None，页面据此标注「未运行」，不能写成「已通过」。
     """
     p = Path(data_dir) / "validation_report.json"
     if not p.exists():
-        return []
+        return None
     try:
         with open(p, "r", encoding="utf-8") as f:
-            rep = json.load(f)
-        return rep.get("fail", [])
-    except Exception:
-        return []
+            return json.load(f)
+    except (OSError, json.JSONDecodeError) as e:
+        print(f"[warn] 无法读取 {p}: {e}", file=sys.stderr)
+        return None
 
 
 def main():
@@ -100,11 +106,14 @@ def main():
             print(f"  - {e}", file=sys.stderr)
 
     # 有 fail 却仍然出图时，页面必须自己说明这是草稿
-    draft_failures = load_gate_report(args.data_dir)
+    gate = load_gate_report(args.data_dir)
+    draft_failures = (gate or {}).get("fail", [])
     ctx["is_draft"] = args.force and bool(draft_failures)
     ctx["draft_failures"] = draft_failures if ctx["is_draft"] else []
     if ctx["is_draft"]:
         ctx["validation_status"] = "不合格草稿（--force 强制渲染）"
+    elif gate is None:
+        ctx["validation_status"] = "未运行事前闸门校验"
     elif draft_failures:
         ctx["validation_status"] = "未通过事前闸门校验"
     else:
