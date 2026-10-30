@@ -86,29 +86,39 @@ def _normalize(s: str) -> str:
     return re.sub(r"[\s“”‘’\"'，。！？；：、…—\-（）()《》〈〉]", "", s)
 
 
-def find_position(content: str, quote_text: str) -> str:
-    """定位引用所在段落，逐级放宽比较方式。
+def _paragraph_index(content: str, idx: int) -> int:
+    """按非空行计数，返回 idx 所在自然段的序号。"""
+    return len([p for p in content[:idx].split("\n") if p.strip()]) + 1
 
-    跨段引用只能按位置比例给近似段落号，读者仍能凭段落号找到大致位置。
+
+def find_position(content: str, quote_text: str) -> str:
+    """定位引用所在自然段，逐级放宽比较方式。
+
+    跨段引用只能按位置比例给近似段序号，读者仍能凭段序号找到大致位置。
     """
-    # 精确匹配，段落号绝对准确
+    # 精确匹配，段序号绝对准确
     idx = content.find(quote_text)
     if idx != -1:
-        return f"第{content[:idx].count(chr(10)) + 1}段"
+        return f"第{_paragraph_index(content, idx)}段"
     norm_text = _normalize(quote_text)
     if not norm_text:
         return "位置未定位"
-    # 逐段比对，容忍标点差异，段落号仍然准确
-    for i, para in enumerate(content.split("\n"), start=1):
+    # 逐段比对，容忍标点差异，段序号仍然准确
+    offset = 0
+    for para in content.split("\n"):
+        line_start = offset
+        offset += len(para) + 1
+        if not para.strip():
+            continue
         if norm_text in _normalize(para):
-            return f"第{i}段"
+            return f"第{_paragraph_index(content, line_start)}段"
     # 全文比对，跨段引用只能按位置比例估算
     norm_content = _normalize(content)
     idx2 = norm_content.find(norm_text)
     if idx2 != -1:
         ratio = idx2 / len(norm_content)
         approx = int(ratio * len(content))
-        return f"第{content[:approx].count(chr(10)) + 1}段"
+        return f"第{_paragraph_index(content, approx)}段"
     return "位置未定位"
 
 
@@ -173,11 +183,12 @@ def annotate_from_markup(manifest, annotation):
     content_by_name = {}
     for item in manifest["files"]:
         content = item.get("content", "")
-        content_by_name[item.get("name")] = content
+        # 同名文件不覆盖先出现的条目；重复文件名由 validate.py 判失败
+        content_by_name.setdefault(item.get("name"), content)
         # 标记层可能写文件名，也可能写路径，两种写法都要能对上
         p = item.get("file", "")
         if p:
-            content_by_name[Path(p).name] = content
+            content_by_name.setdefault(Path(p).name, content)
 
     all_quotes = []
     all_emphasis = []
@@ -267,7 +278,10 @@ def main():
     out_dir.mkdir(parents=True, exist_ok=True)
 
     annotation = None
-    if args.annotation and Path(args.annotation).exists():
+    if args.annotation:
+        if not Path(args.annotation).exists():
+            print(f"[error] annotation 文件不存在: {args.annotation}", file=sys.stderr)
+            sys.exit(1)
         with open(args.annotation, "r", encoding="utf-8-sig") as f:
             annotation = json.load(f)
 
