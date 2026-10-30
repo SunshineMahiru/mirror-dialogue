@@ -19,12 +19,13 @@
 - **跨学科综合**：共识、分歧（含「为什么」）、互补、盲点、同一现象的多元解释（≥8 组）与综合模型。
 - **情感动力学（可选）**（UED 简化版）：提供 `emotion_annotation.json` 时，逐段标注 VAD（效价 / 唤醒 / 控制），计算 Home Base、Variability、Instability、Rise/Recovery Rate 等动态指标。
 - **引用分析**：判定「什么算引用」、来源猜测、功能判断（必须具体到上下文）。
-- **事前闸门**：`validate.py --gate-only` 在生成 HTML 前强制拦截「结构完整但内容浅」的报告，深度不达标默认拒绝渲染。
+- **引用与关键句分离**：`quotes` 只放判定后的引用（含位置与功能）；原文逐字但不在引号或书名号内的关键句放入 `key_sentences`，单独渲染。闸门同时校验引用清单与引用位置。
+- **事前闸门**：`validate.py --gate-only` 在生成 HTML 前拦截结构完整但内容浅的报告；检查深度、证据、引用清单与位置、文献、隐私、HTML 结构。
 - **隐私脱敏**：手机号 / 身份证 / 邮箱 / 座机正则 + 姓名 / 地址显式名单。
 - **产物隔离**：`output/`、输入材料目录与本地知识库用户文件默认被 Git 忽略；处理真实材料时建议用 `--out` 指向仓库外目录。
-- **文献核验开关**：联网核验真实文献；未联网则诚实标注「未检索，需核验」，绝不编造。
+- **文献核验开关**：联网时由主 agent 核验真实文献；离线时标注「未检索，需核验」，绝不编造；`knowledge_lookup.py` 记录所选模式与来源。
 
-## 安装与使用
+## 快速开始
 
 ### 环境要求
 
@@ -39,52 +40,69 @@ cd mirror-dialogue
 pip install -r requirements.txt
 ```
 
-### 使用（五阶段流程）
+### 首次运行
+
+```bash
+OUT=/path/to/output
+python run.py --target-dir /path/to/your/texts --out "$OUT" --config ./config.yaml
+```
+
+首次运行会把清单、统计与时间线产物写入 `$OUT`，随后因缺少 `annotation.json`
+打印待办并退出。继续按下方五阶段流程操作；阶段 3 与阶段 5 必须使用同一个
+`--out "$OUT"`。
+
+## 五阶段流程
 
 分析流程由 `run.py` 串联，分五个阶段（脚本计算与 LLM 分析交替）：
 
 ```bash
 # 阶段 1：跑纯计算脚本（扫描/统计/时间线），annotation.json 缺失时打印待办并退出
-python run.py --target-dir "/path/to/你的文本目录" --out ./output \
+OUT=/path/to/output
+python run.py --target-dir "/path/to/your/texts" --out "$OUT" \
   --config ./config.yaml --knowledge-source builtin
 
-# 阶段 2：LLM 通读原文，按 prompts/annotate.md 产出标记层 annotation.json
-#         （引用候选 + 学科路由判定 + 情感 VAD 标注）
+# 阶段 2：LLM 通读原文，产出 annotation.json
+#         （引用候选 + 学科路由）；可选产出 emotion_annotation.json 供 UED 指标使用
+#         见 prompts/annotate.md
 
-# 阶段 3：重跑（跳过阶段 1），脚本读 annotation.json 做精确定位与证据计数
-python run.py --target-dir "/path/to/你的文本目录" --skip-stage1
+# 阶段 3：沿用阶段 1 产物；脚本读 annotation.json 做精确定位与证据计数
+python run.py --target-dir "/path/to/your/texts" --out "$OUT" \
+  --config ./config.yaml --skip-stage1
 
 # 阶段 4：LLM 分批生成 4 个分析 JSON
 #         （single / global / discipline / cross，深度门槛见 methodology/depth.md）
 
-# 阶段 5：分析 JSON 齐全后重跑；build 前自动跑事前闸门
-python run.py --target-dir "/path/to/你的文本目录" --run-llm-check --skip-scripts
+# 阶段 5：分析 JSON 齐全后 build；build 前自动跑事前闸门
+python run.py --target-dir "/path/to/your/texts" --out "$OUT" \
+  --config ./config.yaml --run-llm-check --skip-scripts
 ```
 
-`run.py` 参数说明：
+### `run.py` 参数
 
 | 参数 | 作用 |
 |------|------|
-| `--target-dir` | 待分析的文本目录（必填） |
-| `--out` | 产物输出目录，默认 `./output` |
-| `--config` | 配置文件，默认 `./config.yaml` |
+| `--target-dir` | 待分析的文本目录；留空时读 `config.yaml` 的 `target_dir` |
+| `--out` | 产物输出目录；默认读 `config.yaml` 的 `output_dir`（`./output`） |
+| `--config` | 配置文件；默认 `./config.yaml` |
+| `--html` | HTML 路径；优先读 `output_html`，否则回退到 `$OUT/report.html` |
+| `--disciplines` / `--template` / `--local-dir` | 可选的学科清单、HTML 模板与本地知识库目录覆盖 |
 | `--skip-stage1` | 跳过阶段 1（沿用 ingest/stats/timeline 产物） |
 | `--skip-scripts` | 跳过全部脚本（纯 build 模式） |
 | `--run-llm-check` | 分析 JSON 齐全时继续 build_html |
 | `--force` | 闸门有 fail 时仍强制渲染（页面标注「不合格草稿」） |
 | `--knowledge-source` | `network` / `local` / `builtin` |
 
-### 运行测试
+## 运行测试
 
 ```bash
 python -m unittest discover tests
 ```
 
-请在执行过 `pip install -r requirements.txt` 的解释器下运行；测试会直接导入脚本及其必需依赖。
+请在执行过 `pip install -r requirements.txt` 的解释器下运行；测试会直接导入脚本及其必需依赖。当前共 44 项测试。
 
 ## 目录结构
 
-```
+```text
 mirror-dialogue/
 ├── SKILL.md              # 主说明书（完整工作流与硬性规则）
 ├── run.py                # 编排入口（五阶段）
@@ -92,8 +110,8 @@ mirror-dialogue/
 ├── schema.json           # 机器可读校验 schema（深度阈值 + 要点清单）
 ├── config.yaml           # 停用词 / 隐私规则 / 网络开关 / 输出路径
 ├── requirements.txt      # 依赖清单
-├── methodology/          # 方法论层（9 篇：镜面对话 / 文本分析 / 引用分析 /
-│                         #   学科路由 / 报告结构 / 深度 / 情感动力学 / 知识规则）
+├── Dockerfile            # 容器镜像
+├── methodology/          # 方法论层（9 个文件：README + 8 篇主题文档）
 ├── prompts/              # 子提示词（7 篇：标记层 / 单篇 / 全局 / 学科 / 跨学科 /
 │                         #   引用 / 语义校验）
 ├── scripts/              # 计算脚本（8 个：ingest / stats / quotes / timeline /
@@ -102,10 +120,11 @@ mirror-dialogue/
 ├── templates/            # HTML 报告模板
 ├── knowledge/            # 学科定义 + 本地文献模板
 ├── tests/                # 单元测试（unittest）
-└── .github/workflows/    # CI
+└── .github/workflows/    # CI 与发布
 ```
 
-> `output/`（分析产物）与 `reference-projects/`（第三方参考源码）已被 `.gitignore` 排除，不入库。
+> `output/`、输入材料目录（`input/`、`materials/`、`corpus/`、`texts/`、`sources/`）、
+> `knowledge/references/` 下的本地用户文件，以及 `reference-projects/` 已被 `.gitignore` 排除，不入库。
 
 ## 配置说明
 
@@ -113,11 +132,14 @@ mirror-dialogue/
 
 | 配置 | 说明 |
 |------|------|
-| `supported_extensions` | 支持的文本扩展名（`.txt/.md/.doc/.docx`） |
+| `supported_extensions` | 支持的文本扩展名（`.txt`、`.md`、`.docx`；旧式 `.doc` 会明确报不支持） |
 | `privacy_mode` / `privacy_patterns` | 隐私脱敏开关与正则（手机号/身份证/邮箱/座机） |
 | `privacy_names` / `privacy_addresses` | 姓名 / 地址显式脱敏名单 |
 | `allow_network` | 是否允许联网检索学科知识 |
 | `verify_references` | 文献核验开关（关联 `allow_network`；未联网自动关闭，只标「需核验」） |
+| `output_dir` / `output_html` | 输出目录与最终 HTML 路径 |
+| `knowledge_source` / `local_knowledge_dir` | `builtin` / `local` / `network`，以及本地文献根目录 |
+| `html_template` / `disciplines_yaml` | 报告模板与学科清单路径 |
 | `chunk_batch` | 单篇 Map 每批读取的篇数 |
 | `min_evidence_per_core` | 每个核心学科的最低证据条数 |
 

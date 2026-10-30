@@ -19,12 +19,13 @@ Core design principle: **methodology sets the skeleton, the LLM fills the flesh.
 - **Cross-disciplinary synthesis**: consensus, disagreement (with "why"), complementarity, blind spots, multi-explanations (≥8 groups) for the same phenomenon, and a synthesis model.
 - **Optional emotion dynamics** (simplified UED): when `emotion_annotation.json` is provided, per-segment VAD annotation (valence / arousal / dominance) and dynamic metrics — Home Base, Variability, Instability, Rise/Recovery Rate.
 - **Quote analysis**: judging what counts as a quote, source guessing, and function analysis (must be specific to context).
-- **Pre-flight gate**: `validate.py --gate-only` blocks "structurally complete but shallow" reports before HTML generation; insufficient depth is rejected by default.
+- **Quote and key-sentence tracking**: `quotes` holds judged quotations with positions and functions; verbatim non-quoted key sentences go to `key_sentences` and are rendered separately. The gate checks the quote inventory and quote positions.
+- **Pre-flight gate**: `validate.py --gate-only` blocks structurally shallow reports before HTML generation; it checks depth, evidence, quote inventory and positions, references, privacy, and HTML structure.
 - **Privacy redaction**: regex for phone / ID / email / landline plus explicit name / address lists.
 - **Artifact isolation**: `output/`, input material directories and local knowledge files are gitignored; for real material, point `--out` to a directory outside the repository.
-- **Reference verification switch**: verify real references when online; otherwise honestly mark "not retrieved, needs verification" — never fabricate.
+- **Reference verification switch**: when online, the agent verifies real references; offline, the skill marks them "not retrieved, needs verification" instead of fabricating. `knowledge_lookup.py` records the selected mode and sources.
 
-## Installation & Usage
+## Quick Start
 
 ### Requirements
 
@@ -39,53 +40,71 @@ cd mirror-dialogue
 pip install -r requirements.txt
 ```
 
-### Usage (five-stage pipeline)
+### First run
+
+```bash
+OUT=/path/to/output
+python run.py --target-dir /path/to/your/texts --out "$OUT" --config ./config.yaml
+```
+
+The first run writes the manifest, statistics, and timeline artifacts to `$OUT`,
+then exits with a TODO because `annotation.json` is missing. Continue with the
+five-stage pipeline below; stages 3 and 5 must use the same `--out "$OUT"`.
+
+## Five-stage pipeline
 
 `run.py` orchestrates the pipeline across five stages (script computation and LLM analysis alternate):
 
 ```bash
 # Stage 1: run pure-computation scripts (ingest/stats/timeline); exits with a TODO if annotation.json is missing
-python run.py --target-dir "/path/to/your/texts" --out ./output \
+OUT=/path/to/output
+python run.py --target-dir "/path/to/your/texts" --out "$OUT" \
   --config ./config.yaml --knowledge-source builtin
 
-# Stage 2: the LLM reads the raw texts and produces the annotation layer (annotation.json)
-#          — quote candidates + discipline routing + emotion VAD annotation (see prompts/annotate.md)
+# Stage 2: the LLM reads the raw texts and writes annotation.json
+#          (quote candidates + discipline routing); optionally write
+#          emotion_annotation.json for UED metrics (see prompts/annotate.md)
 
-# Stage 3: re-run (skip stage 1); scripts read annotation.json for precise localization & evidence counting
-python run.py --target-dir "/path/to/your/texts" --skip-stage1
+# Stage 3: reuse stage 1 artifacts; scripts read annotation.json
+python run.py --target-dir "/path/to/your/texts" --out "$OUT" \
+  --config ./config.yaml --skip-stage1
 
 # Stage 4: the LLM produces the 4 analysis JSONs in batches
 #          (single / global / discipline / cross; depth thresholds in methodology/depth.md)
 
-# Stage 5: re-run once the analysis JSONs are complete; the pre-flight gate runs before build
-python run.py --target-dir "/path/to/your/texts" --run-llm-check --skip-scripts
+# Stage 5: build once the analysis JSONs are complete; the gate runs first
+python run.py --target-dir "/path/to/your/texts" --out "$OUT" \
+  --config ./config.yaml --run-llm-check --skip-scripts
 ```
 
-`run.py` arguments:
+### `run.py` arguments
 
 | Argument | Purpose |
 |----------|---------|
-| `--target-dir` | Directory of texts to analyze (required) |
-| `--out` | Output directory, default `./output` |
-| `--config` | Config file, default `./config.yaml` |
-| `--skip-stage1` | Skip stage 1 (reuse ingest/stats/timeline artifacts) |
-| `--skip-scripts` | Skip all scripts (pure build mode) |
-| `--run-llm-check` | Continue to build_html when analysis JSONs are complete |
-| `--force` | Force rendering even if the gate reports failures (marks the page as "substandard draft") |
+| `--target-dir` | Directory of texts; falls back to `target_dir` in `config.yaml` |
+| `--out` | Output directory; defaults to `output_dir` in `config.yaml` (`./output`) |
+| `--config` | Config file; defaults to `./config.yaml` |
+| `--html` | HTML path; defaults to `output_html` when set, otherwise `$OUT/report.html` |
+| `--disciplines` / `--template` / `--local-dir` | Optional overrides for the discipline list, HTML template, and local knowledge directory |
+| `--skip-stage1` | Skip stage 1 and reuse ingest/stats/timeline artifacts |
+| `--skip-scripts` | Skip all script steps (pure build mode) |
+| `--run-llm-check` | Continue to build_html when the four analysis JSONs exist |
+| `--force` | Render even if the gate reports failures (marks the page as a draft) |
 | `--knowledge-source` | `network` / `local` / `builtin` |
 
-### Run tests
+## Run tests
 
 ```bash
 python -m unittest discover tests
 ```
 
 Run the tests with the interpreter where `pip install -r requirements.txt` was executed;
-the tests import the scripts and their required packages directly.
+the tests import the scripts and their required packages directly. The suite currently
+contains 44 tests.
 
 ## Project Structure
 
-```
+```text
 mirror-dialogue/
 ├── SKILL.md              # Main spec (full workflow & hard rules)
 ├── run.py                # Orchestrator (five stages)
@@ -93,9 +112,8 @@ mirror-dialogue/
 ├── schema.json           # Machine-readable validation schema (depth thresholds + checklists)
 ├── config.yaml           # Stopwords / privacy rules / network switch / output paths
 ├── requirements.txt      # Dependencies
-├── methodology/          # Methodology layer (9 docs: mirror-dialogue / text-analysis /
-│                         #   quote-analysis / discipline-routing / report-structure /
-│                         #   depth / emotion-dynamics / knowledge-rules)
+├── Dockerfile            # Container image
+├── methodology/          # Methodology (9 files: README + 8 topic docs)
 ├── prompts/              # Sub-prompts (7: annotate / map_single / reduce_global /
 │                         #   discipline_analysis / cross_discipline / quote_analysis / verify)
 ├── scripts/              # Computation scripts (8: ingest / stats / quotes / timeline /
@@ -104,10 +122,11 @@ mirror-dialogue/
 ├── templates/            # HTML report template
 ├── knowledge/            # Discipline definitions + local reference template
 ├── tests/                # Unit tests (unittest)
-└── .github/workflows/    # CI
+└── .github/workflows/    # CI and release
 ```
 
-> `output/` (analysis artifacts) and `reference-projects/` (third-party reference source) are excluded by `.gitignore`.
+> `output/`, input material directories (`input/`, `materials/`, `corpus/`, `texts/`, `sources/`),
+> local knowledge files under `knowledge/references/`, and `reference-projects/` are excluded by `.gitignore`.
 
 ## Configuration
 
@@ -115,11 +134,14 @@ Key options in `config.yaml`:
 
 | Option | Description |
 |--------|-------------|
-| `supported_extensions` | Supported text extensions (`.txt/.md/.doc/.docx`) |
+| `supported_extensions` | Supported text extensions (`.txt`, `.md`, `.docx`; legacy `.doc` is reported as unsupported) |
 | `privacy_mode` / `privacy_patterns` | Privacy redaction switch & regex (phone/ID/email/landline) |
 | `privacy_names` / `privacy_addresses` | Explicit name / address redaction lists |
 | `allow_network` | Whether to allow online retrieval of domain knowledge |
 | `verify_references` | Reference verification switch (tied to `allow_network`; auto-off when offline, only marks "needs verification") |
+| `output_dir` / `output_html` | Output directory and final HTML path |
+| `knowledge_source` / `local_knowledge_dir` | `builtin` / `local` / `network`, and the local reference root |
+| `html_template` / `disciplines_yaml` | Report template and discipline list paths |
 | `chunk_batch` | Number of texts per Map batch |
 | `min_evidence_per_core` | Minimum evidence items per core discipline |
 
