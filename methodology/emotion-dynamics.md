@@ -43,6 +43,7 @@
 
 ## 五、与 timeline.py 的关系
 
-- `timeline.py` 的词典法情感曲线 = **粗粒度旁证**（保留，标注方法局限）。
-- 新增 `emotion_dynamics.py` = UED 动态指标（主力，读 LLM 的 VAD 标注）。
-- 两者并存，报告如实标注各自的方法与局限。
+- `timeline.py` 的词典法情感曲线 = 词典旁证（保留，标注方法局限）。
+- `emotion_dynamics.py` = UED 动态指标（可选扩展，读 LLM 的 VAD 标注；只有存在
+  `emotion_annotation.json` 时由 `run.py` 调用）。
+- 两者并存；未提供标注时，报告只保留词典法曲线。

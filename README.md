@@ -17,7 +17,7 @@ Core design principle: **methodology sets the skeleton, the LLM fills the flesh.
 - **Mirror-dialogue analysis** (core): six single-text elements (addressee / pronoun mapping / self-naming shifts / self-talk patterns / the unsaid / trajectory) plus a global chapter of five parts (addressee spectrum / self-naming timeline / self-talk patterns / archaeology of silence / dialogue ethics).
 - **Multidisciplinary lenses**: 15 disciplines routed into core / secondary / excluded via `when/questions/concepts`; core disciplines get depth, secondary get brevity, excluded are explained in the appendix.
 - **Cross-disciplinary synthesis**: consensus, disagreement (with "why"), complementarity, blind spots, multi-explanations (≥8 groups) for the same phenomenon, and a synthesis model.
-- **Emotion dynamics** (simplified UED): per-segment VAD annotation (valence / arousal / dominance) and dynamic metrics — Home Base, Variability, Instability, Rise/Recovery Rate.
+- **Optional emotion dynamics** (simplified UED): when `emotion_annotation.json` is provided, per-segment VAD annotation (valence / arousal / dominance) and dynamic metrics — Home Base, Variability, Instability, Rise/Recovery Rate.
 - **Quote analysis**: judging what counts as a quote, source guessing, and function analysis (must be specific to context).
 - **Pre-flight gate**: `validate.py --gate-only` blocks "structurally complete but shallow" reports before HTML generation; insufficient depth is rejected by default.
 - **Privacy redaction**: regex for phone / ID / email / landline plus explicit name / address lists.

@@ -204,6 +204,13 @@ def main():
              "--source", knowledge_source,
              "--local-dir", local_dir, "--out", out])
 
+        emotion_annotation = out / "emotion_annotation.json"
+        if emotion_annotation.exists():
+            run([sys.executable, str(SCRIPTS_DIR / "emotion_dynamics.py"),
+                 "--annotation", emotion_annotation, "--out", out])
+        else:
+            print("[info] 未找到 emotion_annotation.json，跳过 UED 情感指标。")
+
     # 分析产物缺失时先摆出待办并退出，补齐后再从断点接着跑
     missing = [j for j in LLM_JSON if not (out / j).exists()]
     if missing:

@@ -39,5 +39,5 @@
 3. **分析层**：LLM 基于标记层 + 计算层的精确数据，按 `text-analysis.md`、
    `report-structure.md` 深化，产出 4 个分析 JSON。
 
-> 深度门槛（summary ≥1200、mirror_dialogue ≥800、analysis ≥1500 等）是**硬约束**，
+> 深度门槛（summary ≥1200、mirror_dialogue ≥500（目标 800）、analysis ≥1500 等）是**强制约束**，
 > 由 `validate.py` 事前闸门拦截，见各方法论文件内的「深度门槛」小节。

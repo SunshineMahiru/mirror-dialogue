@@ -35,6 +35,7 @@ def build_context(data_dir):
         "discipline": load_json(d / "discipline_analysis.json"),
         "cross": load_json(d / "cross_discipline.json"),
         "knowledge": load_json(d / "knowledge_sources.json"),
+        "emotion": load_json(d / "emotion_dynamics.json"),
     }
     return ctx
 

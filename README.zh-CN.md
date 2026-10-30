@@ -17,7 +17,7 @@
 - **镜面对话分析**（核心）：单篇六要素（对话对象 / 代词指认 / 自我称谓变化 / 自我对话模式 / 沉默 / 轨迹）+ 全局专章五部分（对话对象谱系 / 称谓时间线 / 对话模式 / 沉默考古 / 对话伦理）。
 - **多学科透镜**：15 学科按 `when/questions/concepts` 路由为 core / secondary / excluded，核心学科深入、辅助学科补充、低相关学科在附录说明。
 - **跨学科综合**：共识、分歧（含「为什么」）、互补、盲点、同一现象的多元解释（≥8 组）与综合模型。
-- **情感动力学**（UED 简化版）：逐段标注 VAD（效价 / 唤醒 / 控制），计算 Home Base、Variability、Instability、Rise/Recovery Rate 等动态指标。
+- **情感动力学（可选）**（UED 简化版）：提供 `emotion_annotation.json` 时，逐段标注 VAD（效价 / 唤醒 / 控制），计算 Home Base、Variability、Instability、Rise/Recovery Rate 等动态指标。
 - **引用分析**：判定「什么算引用」、来源猜测、功能判断（必须具体到上下文）。
 - **事前闸门**：`validate.py --gate-only` 在生成 HTML 前强制拦截「结构完整但内容浅」的报告，深度不达标默认拒绝渲染。
 - **隐私脱敏**：手机号 / 身份证 / 邮箱 / 座机正则 + 姓名 / 地址显式名单。

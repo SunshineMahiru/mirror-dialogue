@@ -667,9 +667,22 @@
       <li>词性过滤：{{ stats.global.method.posseg if stats and stats.global and stats.global.method and stats.global.method.posseg else "未知" }}
           （仅保留 {{ stats.global.method.keep_pos | join('/') if stats and stats.global and stats.global.method and stats.global.method.keep_pos else "n/nr/ns/nt/vn/an/a" }}）</li>
       <li>停用词数：{{ stats.global.method.stopword_count if stats and stats.global and stats.global.method else "未知" }}</li>
-      <li>情感曲线：规则词典法（内置正负情绪词典），非模型推断，仅供粗粒度参考。</li>
+      <li>情感曲线：规则词典法（内置正负情绪词典，含前置否定词判断），非模型推断，仅供情感倾向参考。</li>
       <li>词频/TF-IDF/n-gram/共现：jieba 分词 + 200+ 停用词 + posseg 词性过滤 + 手写 TF-IDF（无 jieba 时降级，见基础统计章节标注）。</li>
     </ul>
+    {% if emotion and emotion.files %}
+    <h3>情感动力学指标（可选）</h3>
+    <table>
+      <thead><tr><th>文件</th><th>基线 valence</th><th>基线 arousal</th><th>变异性（valence）</th><th>情绪密度</th><th>跳变次数</th></tr></thead>
+      <tbody>
+      {% for f in emotion.files %}{% if f.metrics %}
+        <tr><td>{{ f.file }}</td><td>{{ f.metrics.home_base.valence }}</td><td>{{ f.metrics.home_base.arousal }}</td>
+        <td>{{ f.metrics.variability.valence }}</td><td>{{ f.metrics.density }}</td><td>{{ f.metrics.instability.jumps }}</td></tr>
+      {% endif %}{% endfor %}
+      </tbody>
+    </table>
+    {% if emotion.method and emotion.method.limitation %}<p class="note">{{ emotion.method.limitation }}</p>{% endif %}
+    {% endif %}
     <h3>隐私说明</h3>
     <p>报告遵循 config.yaml 隐私规则，默认对姓名、电话、地址等做脱敏处理。</p>
     <h3>不确定性</h3>

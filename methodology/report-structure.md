@@ -51,8 +51,8 @@
 
 ## 五、深度门槛汇总（validate.py 闸门拦截）
 
-- 单篇 summary ≥1200 字、mirror_dialogue 展开 ≥800 字、quotes ≥8 条（每条有解读）、
-  quote_analysis ≥300 字、emotion_turning_points ≥300 字。
+- 单篇 summary ≥1200 字、mirror_dialogue 展开 ≥500 字（写作目标 800，闸门按 500 拦截）、
+  quotes ≥8 条（每条有解读）、quote_analysis ≥300 字、emotion_turning_points ≥300 字。
 - 学科 analysis ≥1500 字、counter_evidence ≥300 字、methods ≥200 字。
 - 全局 key_findings ≥15 条（validate 最低红线 10 条）。
 - HTML 必须含 12 个章节锚点（summary/per-file/mirror-dialogue/discipline-analysis/

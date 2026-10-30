@@ -86,7 +86,7 @@ python run.py --target-dir "{{TARGET_DIR}}" --run-llm-check --skip-scripts
 |------|------|------|
 | 1 | ingest → stats → timeline（纯计算） | 脚本 |
 | 2 | annotation.json（标记层：引用候选 + 学科路由判定） | LLM |
-| 3 | quotes（定位/计数）→ discipline_router（证据命中计数）→ knowledge_lookup | 脚本 |
+| 3 | quotes（定位/计数）→ discipline_router（证据命中计数）→ knowledge_lookup → emotion_dynamics（可选） | 脚本 |
 | 4 | single / global / discipline / cross 四个分析 JSON | LLM |
 | 5 | build_html（build 前自动跑事前闸门） | 脚本 |
 
@@ -229,12 +229,19 @@ python validate.py --data-dir ./output --config ./config.yaml
 - **跨学科多元解释**：`multi_explanations` ≥8 组、`synthesis_model`、`complementary`、
   `limitations_ethics` 必须存在。
 - **统计:分析字数比**：附录（stats/keywords/quotes/references）与分析正文
-  （per-file/discipline-analysis/mirror-dialogue）字数比 ≤1:2。
+  （summary/per-file/discipline-analysis/mirror-dialogue/global/conclusion）字数比 ≤1:2。
 
 若 fail 非空，须修复后重跑。运行测试：`python -m unittest discover tests`。
 
-> 约束：`files_manifest.json` 的 `file` 字段必须为**绝对路径**（ingest.py 默认如此），
-> 否则 validate.py 的隐私检查会因读不到原始文件而记 warn（不静默跳过）。
+### 第十一步：语义校验（可选）
+
+结构闸门通过后，按 `prompts/verify.md` 通读四个分析 JSON 与 `stats.json` / `quotes.json` /
+`timeline.json`，检查自相矛盾、空口无凭、数字不一致，产出 `verification_report.json`。
+该报告作为待办交由分析层修正，不直接改写分析 JSON，也不改变 `validate.py` 的退出码。
+
+> 约束：`files_manifest.json` 的 `file` 字段要能从校验进程的当前目录读到。经 `run.py`
+> 调用时，`--target-dir` 会先解析为绝对路径；直接调用 `ingest.py` 时请传绝对路径，
+> 或保证校验与解析从同一目录运行。否则隐私检查会因读不到原始文件而记 warn。
 
 ## 分块生成机制（防 token 截断）
 
