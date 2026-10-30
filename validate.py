@@ -75,6 +75,21 @@ DEFAULT_PRIVACY = {
 }
 
 
+def collect_privacy_rules(cfg):
+    """固定规则保证脱敏检查始终存在，配置规则只做补充。"""
+    rules = dict(DEFAULT_PRIVACY)
+    for item in cfg.get("privacy_patterns", []):
+        if isinstance(item, dict):
+            label = str(item.get("name") or item.get("pattern") or "")
+            pat = item.get("pattern")
+        else:
+            label = str(item)
+            pat = item
+        if pat:
+            rules[label or str(pat)] = str(pat)
+    return rules
+
+
 def load_json(path):
     if path and Path(path).exists():
         with open(path, "r", encoding="utf-8-sig") as f:
@@ -339,14 +354,26 @@ def check_references_verified(discipline, plan, report, verify_on=True):
         report["pass"].append("references: 文献均标注核验状态")
 
 
-def check_privacy(manifest, report):
+def check_privacy(manifest, cfg, report):
     """重新读取原始文件，与脱敏后的正文逐一对照。
 
-    只看 manifest 里存着的 content，等于让产物自己证明自己；原始路径读不到时记 warn，
-    把检查没覆盖到的范围露出来。
+    固定规则与配置规则一起使用；隐私模式关闭时只记 warn，不把「没有脱敏」
+    误报成「脱敏失效」。原始路径读不到时记 warn，把检查没覆盖到的范围露出来。
     """
     if not manifest:
         return
+    if not cfg.get("privacy_mode", True):
+        report["warn"].append("privacy: privacy_mode 已关闭，未执行脱敏校验")
+        return
+    rules = collect_privacy_rules(cfg)
+    compiled = []
+    for label, pat in rules.items():
+        try:
+            compiled.append((label, re.compile(pat)))
+        except re.error:
+            report["warn"].append(f"privacy: 配置规则「{label}」不是合法正则，未参与校验")
+    names = [str(n) for n in cfg.get("privacy_names", []) if n]
+    addresses = [str(a) for a in cfg.get("privacy_addresses", []) if a]
     leaks = []
     skipped = []
     checked = 0
@@ -362,9 +389,15 @@ def check_privacy(manifest, report):
             continue
         checked += 1
         masked = f.get("content", "")
-        for label, pat in DEFAULT_PRIVACY.items():
-            if re.search(pat, raw) and re.search(pat, masked):
+        for label, pat in compiled:
+            if pat.search(raw) and pat.search(masked):
                 leaks.append(f"{Path(raw_path).name} 脱敏后仍含{label}（脱敏失效）")
+        for idx, name in enumerate(names, 1):
+            if name in raw and name in masked:
+                leaks.append(f"{Path(raw_path).name} 脱敏后仍含名单中的姓名（第 {idx} 项）")
+        for idx, addr in enumerate(addresses, 1):
+            if addr in raw and addr in masked:
+                leaks.append(f"{Path(raw_path).name} 脱敏后仍含名单中的地址（第 {idx} 项）")
     if skipped:
         report["warn"].append(
             f"privacy: {len(skipped)} 个原始文件路径不可达被跳过（如 {skipped[0]}），"
@@ -376,6 +409,21 @@ def check_privacy(manifest, report):
         report["pass"].append(f"privacy: 抽样 {checked} 个原始文件，未发现脱敏失效")
     else:
         report["fail"].append("privacy: 未能读取任何原始文件，隐私检查失效")
+
+
+def check_manifest_errors(manifest, report):
+    """读取失败的条目不能带着空正文进入后续分析。"""
+    if not manifest:
+        return
+    errors = [f for f in manifest.get("files", []) if f.get("error")]
+    if not errors:
+        report["pass"].append("manifest: 所有文件读取成功")
+        return
+    sample = errors[0]
+    report["fail"].append(
+        f"manifest: {len(errors)} 个文件读取失败"
+        f"（如 {sample.get('name')}: {sample.get('error')}）"
+    )
 
 
 def check_degraded(stats, report):
@@ -553,14 +601,16 @@ def main():
 
     plan = load_json(data_dir / "discipline_plan.json")
     discipline = load_json(data_dir / "discipline_analysis.json")
+    manifest = load_json(manifest_path)
 
     check_schema(data_dir, report)
-    check_file_coverage(load_json(manifest_path),
+    check_file_coverage(manifest,
                         load_json(data_dir / "single_analysis.json"), report)
     check_quotes_localizable(load_json(data_dir / "quotes.json"), report)
     check_discipline_evidence(plan, discipline, min_ev, report)
     check_references_verified(discipline, plan, report, verify_on)
-    check_privacy(load_json(manifest_path), report)
+    check_privacy(manifest, cfg, report)
+    check_manifest_errors(manifest, report)
     check_degraded(load_json(data_dir / "stats.json"), report)
     check_cross_discipline(load_json(data_dir / "cross_discipline.json"), report)
     check_cross_discipline_multi(load_json(data_dir / "cross_discipline.json"), report)
