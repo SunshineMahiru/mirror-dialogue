@@ -360,18 +360,31 @@ def check_quote_inventory(quotes, single, report):
     """单篇分析与引用清单必须指向同一批句子，否则正文引用在附录里查不到。"""
     if not quotes or not single:
         return
-    inventory = {(q.get("file"), _norm_quote(q.get("text")))
-                 for q in quotes.get("quotes") or []}
+    inventory = {
+        (q.get("file"), _norm_quote(q.get("text"))): q
+        for q in quotes.get("quotes") or []
+    }
     missing = []
+    mismatched = []
     for a in single:
         fname = a.get("file")
         for q in a.get("quotes") or []:
-            if (fname, _norm_quote(q.get("text"))) not in inventory:
+            key = (fname, _norm_quote(q.get("text")))
+            if key not in inventory:
                 missing.append(f"{fname}「{(q.get('text') or '')[:20]}」")
+                continue
+            expected = inventory[key].get("position")
+            actual = q.get("position")
+            if expected and actual and expected != actual:
+                mismatched.append(
+                    f"{fname}「{(q.get('text') or '')[:20]}」单篇 {actual} / 清单 {expected}")
     if missing:
         report["fail"].append(
             f"quotes: {len(missing)} 条单篇引用不在引用清单中（如 {missing[0]}）")
-    else:
+    if mismatched:
+        report["fail"].append(
+            f"quotes: {len(mismatched)} 条引用位置不一致（如 {mismatched[0]}）")
+    if not missing and not mismatched:
         report["pass"].append("quotes: 单篇引用与引用清单一致")
 
 

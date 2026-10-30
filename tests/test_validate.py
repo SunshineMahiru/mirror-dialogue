@@ -154,5 +154,28 @@ class TestGateOnlyExitCode(unittest.TestCase):
             self.assertNotIn("mirror_dialogue: a.txt 缺字段", r.stdout + r.stderr)
 
 
+class TestQuoteInventory(unittest.TestCase):
+    def test_position_mismatch_fails(self):
+        r = new_report()
+        quotes = {"quotes": [{"file": "a.txt", "text": "同一句", "position": "第2段"}]}
+        single = [{"file": "a.txt", "quotes": [{"text": "同一句", "position": "第1段"}]}]
+        V.check_quote_inventory(quotes, single, r)
+        self.assertTrue(any("位置不一致" in f for f in r["fail"]))
+
+    def test_same_position_passes(self):
+        r = new_report()
+        quotes = {"quotes": [{"file": "a.txt", "text": "同一句", "position": "第2段"}]}
+        single = [{"file": "a.txt", "quotes": [{"text": "同一句", "position": "第2段"}]}]
+        V.check_quote_inventory(quotes, single, r)
+        self.assertFalse(r["fail"])
+
+    def test_missing_text_fails(self):
+        r = new_report()
+        quotes = {"quotes": [{"file": "a.txt", "text": "甲句", "position": "第1段"}]}
+        single = [{"file": "a.txt", "quotes": [{"text": "乙句", "position": "第1段"}]}]
+        V.check_quote_inventory(quotes, single, r)
+        self.assertTrue(any("不在引用清单中" in f for f in r["fail"]))
+
+
 if __name__ == "__main__":
     unittest.main()
