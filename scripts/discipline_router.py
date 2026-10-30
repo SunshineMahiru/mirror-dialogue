@@ -2,22 +2,32 @@ import argparse
 import json
 import re
 import sys
-from collections import Counter
 from pathlib import Path
 
-try:
-    import yaml
-except ImportError:
-    yaml = None
+import yaml
 
 
 def load_disciplines(path):
-    if yaml is None:
-        print("[error] 需要 PyYAML 才能读取 disciplines.yaml", file=sys.stderr)
-        sys.exit(1)
     with open(path, "r", encoding="utf-8") as f:
         data = yaml.safe_load(f) or {}
     return data.get("disciplines", [])
+
+
+def apply_always(core, secondary, excluded, disciplines, reasons):
+    """把配置里 always: true 的学科放回 core，并补一条原因。"""
+    for d in disciplines:
+        if not d.get("always"):
+            continue
+        did = d.get("id")
+        if not did:
+            continue
+        if did not in core:
+            core.append(did)
+        if did in excluded:
+            excluded.remove(did)
+        if did in secondary:
+            secondary.remove(did)
+        reasons.setdefault(did, "配置标记为始终启用（统计基础学科）")
 
 
 def feature_text(manifest, stats, keywords, quotes, timeline):
@@ -143,7 +153,10 @@ def main():
     timeline = load(args.timeline)
 
     annotation = None
-    if args.annotation and Path(args.annotation).exists():
+    if args.annotation:
+        if not Path(args.annotation).exists():
+            print(f"[error] annotation 文件不存在: {args.annotation}", file=sys.stderr)
+            sys.exit(1)
         annotation = load(args.annotation)
 
     out_dir = Path(args.out)
@@ -158,14 +171,7 @@ def main():
         excluded = list(ap_plan.get("excluded_disciplines", []))
         reasons = dict(ap_plan.get("reasons", {}))
         llm_evidence = dict(ap_plan.get("evidence", {}))
-        # 数字人文始终进入 core（作为统计基础）
-        dids = {d.get("id") for d in disciplines}
-        if "digital_humanities" in dids and "digital_humanities" not in core:
-            core.append("digital_humanities")
-            if "digital_humanities" in excluded:
-                excluded.remove("digital_humanities")
-            if "digital_humanities" in secondary:
-                secondary.remove("digital_humanities")
+        apply_always(core, secondary, excluded, disciplines, reasons)
         hit_map = evidence_hits_from_markup(manifest, disciplines)
         plan = {
             "core_disciplines": core,
@@ -188,22 +194,18 @@ def main():
             scores[did] = s
             hit_map[did] = hits
         core, secondary, excluded = classify(scores)
-        if "digital_humanities" in scores and "digital_humanities" not in core:
-            core.append("digital_humanities")
-            if "digital_humanities" in excluded:
-                excluded.remove("digital_humanities")
-            if "digital_humanities" in secondary:
-                secondary.remove("digital_humanities")
+        reasons = {
+            did: f"触发词命中: {', '.join(hit_map.get(did, [])[:8]) or '无显式触发，作为统计/基础学科启用'}"
+            for did in core
+        }
+        apply_always(core, secondary, excluded, disciplines, reasons)
         plan = {
             "core_disciplines": core,
             "secondary_disciplines": secondary,
             "excluded_disciplines": excluded,
             "scores": scores,
-            "evidence": {did: hit_map[did] for did in core},
-            "reasons": {
-                did: f"触发词命中: {', '.join(hit_map[did][:8]) or '无显式触发，作为统计/基础学科启用'}"
-                for did in core
-            },
+            "evidence": {did: hit_map.get(did, []) for did in core},
+            "reasons": reasons,
             "method": "【legacy 启发式】关键词计数 + avg*1.2 一刀切（建议改用 annotation.json 标记层）",
         }
 

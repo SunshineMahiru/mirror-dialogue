@@ -27,19 +27,22 @@
 ## 三、脚本职责边界
 
 `scripts/discipline_router.py` 只做：读取标记层的学科信号 → 对每个学科的 `when` /
-`concepts` 做**证据命中计数**（命中几次、命中哪些词）→ 输出 `discipline_evidence.json`
-供 LLM 参考。**不再用 `avg * 1.2` 一刀切判定 core/secondary/excluded**。
+`concepts` 做**证据命中计数**（命中几次、命中哪些词）→ 合并标记层的 core / secondary /
+excluded 判定，输出 `discipline_plan.json`（含 `hit_counts` 与 `reasons`）。**不再用
+`avg * 1.2` 一刀切判定 core/secondary/excluded**。
 
 ## 四、特殊规则
 
-- **数字人文（`digital_humanities`）始终作为 core**（统计基础学科）。
+- **`knowledge/disciplines.yaml` 中标记 `always: true` 的学科始终作为 core**（当前为
+  数字人文，统计基础学科）。
 - 每个 core 学科至少 3 条原文证据（`min_evidence_per_core`）。
 
 ## 五、输出
 
-`discipline_plan.json` 由 LLM 产出，字段：`core_disciplines / secondary_disciplines /
-excluded_disciplines / reasons / evidence`，`reasons` 必须写明判定依据（哪条 `when` 触发、
-哪个 `question` 成立）。
+`annotation.json` 的 `discipline_plan` 段由 LLM 产出，字段：`core_disciplines /
+secondary_disciplines / excluded_disciplines / reasons / evidence`，`reasons` 必须写明
+判定依据（哪条 `when` 触发、哪个 `question` 成立）。脚本合并标记层与命中计数后写
+`discipline_plan.json`，供分析与渲染使用。
 
 ## 六、excluded 学科的呈现规则
 

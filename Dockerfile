@@ -10,9 +10,9 @@ ENV PYTHONDONTWRITEBYTECODE=1 \
 
 WORKDIR /app
 
-# 依赖：requirements.txt 为必需项；python-docx 为可选解析器（.docx 支持）
+# 依赖全部由 requirements.txt 固定版本；python-docx 用于 .docx 解析
 COPY requirements.txt ./
-RUN pip install --no-cache-dir -r requirements.txt python-docx
+RUN pip install --no-cache-dir -r requirements.txt
 
 COPY . .
 

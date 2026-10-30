@@ -4,10 +4,7 @@ import re
 import sys
 from pathlib import Path
 
-try:
-    import yaml
-except ImportError:
-    yaml = None
+import yaml
 
 
 # 页面渲染要用的字段；少一个，对应章节就会空着
@@ -699,7 +696,7 @@ def main():
     args = ap.parse_args()
 
     cfg = {}
-    if yaml is not None and Path(args.config).exists():
+    if Path(args.config).exists():
         with open(args.config, "r", encoding="utf-8") as f:
             cfg = yaml.safe_load(f) or {}
     min_ev = cfg.get("min_evidence_per_core", 3)

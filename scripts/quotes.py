@@ -4,10 +4,7 @@ import re
 import sys
 from pathlib import Path
 
-try:
-    import yaml
-except ImportError:
-    yaml = None
+import yaml
 
 
 QUOTE_PATTERNS = [
@@ -46,7 +43,7 @@ def load_config(cfg_path):
         "quote_patterns": [],
         "citation_verbs": DEFAULT_CITATION_VERBS,
     }
-    if cfg_path and Path(cfg_path).exists() and yaml is not None:
+    if cfg_path and Path(cfg_path).exists():
         with open(cfg_path, "r", encoding="utf-8") as f:
             user = yaml.safe_load(f) or {}
         cfg.update({k: v for k, v in user.items() if k in cfg})

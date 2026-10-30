@@ -4,10 +4,9 @@
 # =====================================================================
 
 # ---- 输入输出 ----
-target_dir: ""            # 待分析目录（留空则由运行时参数/提示词注入）
+target_dir: ""            # 待分析目录；命令行未给 --target-dir 时使用
 output_dir: "./output"    # JSON 与 HTML 输出目录
 output_html: "./output/report.html"   # 最终 HTML 报告路径
-language: "zh"            # 语言：zh / en
 
 # ---- 隐私 ----
 privacy_mode: true        # 默认脱敏：不展示真实姓名/地址/电话
@@ -58,14 +57,9 @@ citation_verbs: ["说", "写道", "提到", "引用", "如", "所谓", "记得",
 # ---- 学科分析 ----
 disciplines_yaml: "./knowledge/disciplines.yaml"
 min_evidence_per_core: 3   # 每个核心学科至少 N 条原文证据
-discipline_share: 0.6      # 学科分析占报告比例目标（0.5-0.7）
 
 # ---- HTML 生成 ----
 html_template: "./templates/report.html.j2"
-chart_engine: "inline_svg"   # inline_svg / chartjs / none
-offline: true              # 离线模式：全部内联，不引用 CDN
-collapse_long_sections: true  # 长文用 <details> 折叠
 
 # ---- 分块生成 ----
-chunk_batch: 5             # 单篇 Map 每批处理篇数
-report_no_token_limit: true  # 报告不设 token 上限，分块写入
+chunk_batch: 5             # 单篇 Map 每批处理篇数（由执行分析的 agent 读取）

@@ -207,7 +207,7 @@ python scripts/build_html.py --data-dir ./output --out "{{OUTPUT_HTML}}" \
 > `validate.py --gate-only`**（内容闸门）。fail 非空默认拒绝渲染、输出 fail 清单；
 > 追加 `--force` 可强制渲染「不合格草稿」。
 
-渲染后校验：目录锚点可跳转、表格数据、引用位置、图表数据是否与 JSON 一致。
+渲染后校验：目录锚点可跳转、表格数据、引用位置是否与 JSON 一致。
 
 ### 第十步：自检
 
@@ -338,7 +338,7 @@ python validate.py --data-dir ./output --config ./config.yaml
 - [ ] HTML 可直接打开，目录锚点正确。
 - [ ] 报告主体是分析，统计表在附录，统计与分析字数比 ≤ 1:2。
 - [ ] HTML 含镜面对话专章 `#mirror-dialogue`（五部分齐全，≥1500 字）。
-- [ ] 表格、图表数据与 JSON 一致。
+- [ ] 表格数据与 JSON 一致。
 - [ ] 长报告分块生成，未因 token 截断。
 - [ ] 是否先做学科路由，而非所有学科平均用力。
 - [ ] 核心学科是否至少 3 条原文证据。
@@ -391,22 +391,16 @@ python validate.py --data-dir ./output --config ./config.yaml
 | `prompts/cross_discipline.md` | 跨学科综合子提示词 |
 | `knowledge/disciplines.yaml` | 15 个学科透镜定义 |
 | `knowledge/references/` | 本地学科知识库（默认空，需用户录入真实文献） |
-| `config.yaml` | 停用词、隐私规则、输出路径、图表开关、`verify_references` 核验开关等 |
-| `requirements.txt` | 依赖清单（jieba/pyyaml/jinja2） |
+| `config.yaml` | 停用词、隐私规则、输出路径、学科清单、模板路径、`verify_references` 核验开关等 |
+| `requirements.txt` | 依赖清单（jieba/PyYAML/jinja2/python-docx，版本固定） |
 | `.github/workflows/ci.yml` | CI：跑单测 + 语法检查 |
 | `tests/` | 单元测试（unittest，`python -m unittest discover tests`） |
 
 ## 依赖
 
-- Python 3：`jieba`（分词）、`PyYAML`（配置/学科清单）、`jinja2`（HTML 渲染）。
-- 可选：`python-docx`（解析 .docx）。
-- 安装：`pip install jieba pyyaml jinja2 python-docx`
+- Python 3：`jieba`（分词）、`PyYAML`（配置/学科清单）、`jinja2`（HTML 渲染）、`python-docx`（解析 .docx）。
+- 安装：`pip install -r requirements.txt`（版本已固定）。
 
-缺失依赖时脚本会降级运行，并在 `stats.json` 里标注 `method.degraded=true`，
-HTML 报告基础统计章节会显式提示“降级模式”：
-
-- 无 jieba：词频/TF-IDF/n-gram/共现退化为按字切分，多字词统计精度下降。
-- 无 python-docx：`.docx` 无法解析，`files_manifest.json` 中该文件记录读取失败错误。
-
-降级不影响字数/段落/句子等基础统计（不依赖分词），但关键词类指标须以标注为准，
-不得把降级结果当作精确词频呈现。
+只有 jieba 缺失时统计进入降级模式，并在 `stats.json` 里标注 `method.degraded=true`：
+词频/TF-IDF/n-gram/共现退化为按字切分，多字词统计精度下降。
+`PyYAML`、`jinja2`、`python-docx` 缺失会在启动或读取对应文件时直接报错，不再静默降级。

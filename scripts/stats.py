@@ -6,10 +6,7 @@ import sys
 from collections import Counter, defaultdict
 from pathlib import Path
 
-try:
-    import yaml
-except ImportError:
-    yaml = None
+import yaml
 
 try:
     import jieba
@@ -100,7 +97,7 @@ def load_config(cfg_path):
         "cooccurrence_top_n": 200,
         "top_keywords_n": 30,
     }
-    if cfg_path and Path(cfg_path).exists() and yaml is not None:
+    if cfg_path and Path(cfg_path).exists():
         with open(cfg_path, "r", encoding="utf-8") as f:
             user = yaml.safe_load(f) or {}
         # 只收已知键，配置里拼错的名字不会悄悄改掉默认值

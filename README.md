@@ -28,7 +28,7 @@ Core design principle: **methodology sets the skeleton, the LLM fills the flesh.
 ### Requirements
 
 - Python 3.12+
-- Dependencies: `jieba`, `pyyaml`, `jinja2`
+- Dependencies: `jieba`, `pyyaml`, `jinja2`, `python-docx`
 
 ### Install
 

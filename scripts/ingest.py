@@ -4,10 +4,7 @@ import re
 import sys
 from pathlib import Path
 
-try:
-    import yaml
-except ImportError:
-    yaml = None
+import yaml
 
 
 DEFAULT_EXTENSIONS = [".txt", ".md", ".doc", ".docx"]
@@ -35,13 +32,10 @@ def load_config(config_path):
         "privacy_addresses": [],
     }
     if config_path and Path(config_path).exists():
-        if yaml is None:
-            print("[warn] PyYAML 未安装，跳过 config 解析", file=sys.stderr)
-        else:
-            with open(config_path, "r", encoding="utf-8") as f:
-                user_cfg = yaml.safe_load(f) or {}
-            # 只收已知键：配置里拼错的名字不该悄悄改掉默认行为
-            cfg.update({k: v for k, v in user_cfg.items() if k in cfg})
+        with open(config_path, "r", encoding="utf-8") as f:
+            user_cfg = yaml.safe_load(f) or {}
+        # 只收已知键：配置里拼错的名字不该悄悄改掉默认行为
+        cfg.update({k: v for k, v in user_cfg.items() if k in cfg})
     return cfg
 
 

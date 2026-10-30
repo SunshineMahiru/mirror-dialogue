@@ -3,11 +3,7 @@ import json
 import sys
 from pathlib import Path
 
-try:
-    from jinja2 import Environment, FileSystemLoader, select_autoescape
-    JINJA_OK = True
-except ImportError:
-    JINJA_OK = False
+from jinja2 import Environment, FileSystemLoader, select_autoescape
 
 
 def load_json(path):
@@ -42,9 +38,6 @@ def build_context(data_dir):
 
 
 def render(template_path, ctx, out_path):
-    if not JINJA_OK:
-        print("[error] 需要 Jinja2，请 pip install jinja2", file=sys.stderr)
-        sys.exit(1)
     env = Environment(
         loader=FileSystemLoader(str(template_path.parent)),
         autoescape=select_autoescape(["html", "j2"]),

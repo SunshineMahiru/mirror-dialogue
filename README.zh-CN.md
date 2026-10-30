@@ -28,7 +28,7 @@
 ### 环境要求
 
 - Python 3.12+
-- 依赖：`jieba`、`pyyaml`、`jinja2`
+- 依赖：`jieba`、`pyyaml`、`jinja2`、`python-docx`
 
 ### 安装
 
