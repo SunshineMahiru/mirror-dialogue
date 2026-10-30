@@ -85,7 +85,8 @@ def _normalize(s: str) -> str:
 
 def _paragraph_index(content: str, idx: int) -> int:
     """按非空行计数，返回 idx 所在自然段的序号。"""
-    return len([p for p in content[:idx].split("\n") if p.strip()]) + 1
+    line_start = content.rfind("\n", 0, idx) + 1
+    return len([p for p in content[:line_start].split("\n") if p.strip()]) + 1
 
 
 def find_position(content: str, quote_text: str) -> str:
