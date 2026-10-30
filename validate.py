@@ -20,6 +20,11 @@ REQUIRED_SCHEMA = {
         "global.total_sentences": "总句子",
         "files[].file": "单文件名字段",
     },
+    "annotation.json": {
+        "quotes[].text": "引用候选文本",
+        "quotes[].file": "引用候选文件",
+        "discipline_plan.core_disciplines[]": "核心学科",
+    },
     "quotes.json": {
         "total_quotes": "引用总数",
         "density": "引用密度",
@@ -92,8 +97,12 @@ def collect_privacy_rules(cfg):
 
 def load_json(path):
     if path and Path(path).exists():
-        with open(path, "r", encoding="utf-8-sig") as f:
-            return json.load(f)
+        try:
+            with open(path, "r", encoding="utf-8-sig") as f:
+                return json.load(f)
+        except json.JSONDecodeError as e:
+            raise ValueError(
+                f"{path} 无法解析为 JSON（第 {e.lineno} 行第 {e.colno} 列）: {e.msg}") from e
     return None
 
 
@@ -114,8 +123,8 @@ def get_by_path(obj, path):
         if part == "[]":
             if isinstance(cur, list):
                 if not cur:
-                    # 空列表同样代表字段存在：模板的 for 循环遇到空列表只会输出空内容
-                    return cur
+                    # 必填列表为空等于没有内容，不能当作字段齐全
+                    return None
                 cur = cur[0]
             else:
                 return None
@@ -137,6 +146,17 @@ def flatten(obj) -> str:
     if isinstance(obj, str):
         return obj
     return json.dumps(obj, ensure_ascii=False)
+
+
+def _empty_value(value) -> bool:
+    """空串、空数组、空对象都算没有内容。"""
+    if value is None:
+        return True
+    if isinstance(value, str):
+        return not value.strip()
+    if isinstance(value, (list, dict, tuple)):
+        return len(value) == 0
+    return False
 
 
 # ---------------------------------------------------------------------------
@@ -168,7 +188,7 @@ DEFAULT_SCHEMA = {
         },
         "cross": {
             "multi_explanations": {"min_count": 8},
-            "required_fields": ["complementary", "limitations_ethics"],
+            "required_fields": ["synthesis_model", "complementary", "limitations_ethics"],
             "min_list": {"consensus": 1, "further_questions": 1},
         },
     },
@@ -188,8 +208,8 @@ def load_schema():
             with open(p, "r", encoding="utf-8") as f:
                 _SCHEMA_CACHE = json.load(f)
             return _SCHEMA_CACHE
-        except Exception:
-            pass
+        except (OSError, json.JSONDecodeError) as e:
+            raise ValueError(f"schema.json 读取失败: {e}") from e
     _SCHEMA_CACHE = DEFAULT_SCHEMA
     return _SCHEMA_CACHE
 
@@ -212,7 +232,11 @@ def check_content_depth(single, discipline, global_analysis, report):
     min_summary = _sd("single.summary.min_zh_chars", 1200)
     min_md = _sd("single.mirror_dialogue.min_zh_chars", 500)
     min_quotes = _sd("single.quotes.min_count", 5)
+    min_qa = _sd("single.quote_analysis.min_zh_chars", 300)
+    min_etp = _sd("single.emotion_turning_points.min_zh_chars", 300)
     min_analysis = _sd("discipline.analysis.min_zh_chars", 1500)
+    min_ce = _sd("discipline.counter_evidence.min_zh_chars", 300)
+    min_methods = _sd("discipline.methods.min_zh_chars", 200)
     min_kf = _sd("global.key_findings.min_count", 10)
     if single:
         for a in single:
@@ -232,6 +256,14 @@ def check_content_depth(single, discipline, global_analysis, report):
             for q in qs:
                 if not q.get("interpretation") and not q.get("explanation"):
                     report["fail"].append(f"depth: {fname} 存在无解读的引用「{q.get('text','')[:20]}」")
+            qa = a.get("quote_analysis", "")
+            if zh_len(qa) < min_qa:
+                report["fail"].append(
+                    f"depth: {fname} quote_analysis {zh_len(qa)} 字 < {min_qa}")
+            etp = a.get("emotion_turning_points", "")
+            if zh_len(etp) < min_etp:
+                report["fail"].append(
+                    f"depth: {fname} emotion_turning_points {zh_len(etp)} 字 < {min_etp}")
     if discipline:
         for d in discipline:
             dname = d.get("discipline", d.get("name", "?"))
@@ -239,10 +271,18 @@ def check_content_depth(single, discipline, global_analysis, report):
             if zh_len(analysis) < min_analysis:
                 report["fail"].append(
                     f"depth: {dname} analysis {zh_len(analysis)} 字 < {min_analysis}")
-            if not d.get("counter_evidence"):
+            ce = d.get("counter_evidence", "")
+            if _empty_value(ce):
                 report["fail"].append(f"depth: {dname} counter_evidence 为空")
-            if not d.get("methods"):
+            elif zh_len(flatten(ce)) < min_ce:
+                report["fail"].append(
+                    f"depth: {dname} counter_evidence {zh_len(flatten(ce))} 字 < {min_ce}")
+            methods = d.get("methods", "")
+            if _empty_value(methods):
                 report["fail"].append(f"depth: {dname} methods 为空")
+            elif zh_len(flatten(methods)) < min_methods:
+                report["fail"].append(
+                    f"depth: {dname} methods {zh_len(flatten(methods))} 字 < {min_methods}")
     if global_analysis:
         kf = global_analysis.get("key_findings", [])
         if len(kf) < min_kf:
@@ -276,21 +316,65 @@ def check_file_coverage(manifest, single, report):
     m_files = {f.get("name") for f in manifest.get("files", [])}
     s_files = {a.get("file") for a in single}
     missing = m_files - s_files
+    extra = s_files - m_files
     if missing:
         report["fail"].append(f"coverage: 以下文件未被逐篇分析 {missing}")
-    else:
+    if extra:
+        report["fail"].append(f"coverage: 以下分析条目不在清单中 {extra}")
+    if not missing and not extra:
         report["pass"].append(f"coverage: {len(m_files)} 个文件全覆盖")
+
+
+def check_duplicate_names(manifest, report):
+    if not manifest:
+        return
+    names = [f.get("name") for f in manifest.get("files", [])]
+    dups = sorted({n for n in names if n and names.count(n) > 1})
+    if dups:
+        report["fail"].append(f"manifest: 文件名重复 {dups}，引用定位可能错位")
+    else:
+        report["pass"].append("manifest: 文件名唯一")
 
 
 def check_quotes_localizable(quotes, report):
     if not quotes:
         return
-    bad = [q for q in quotes.get("quotes", [])
+    items = quotes.get("quotes") or []
+    if not items:
+        report["fail"].append("quotes: 引用清单为空（至少需要 1 条）")
+        return
+    bad = [q for q in items
            if not q.get("position") or q["position"] == "位置未定位"]
     if bad:
         report["fail"].append(f"quotes: {len(bad)} 条引用无法定位")
     else:
-        report["pass"].append(f"quotes: {len(quotes.get('quotes', []))} 条引用均可定位")
+        report["pass"].append(f"quotes: {len(items)} 条引用均可定位")
+
+
+QUOTE_NOISE_RE = re.compile(r"[\s“”‘’\"'，。！？；：、…—\-（）()《》〈〉]")
+
+
+def _norm_quote(text: str) -> str:
+    return QUOTE_NOISE_RE.sub("", text or "")
+
+
+def check_quote_inventory(quotes, single, report):
+    """单篇分析与引用清单必须指向同一批句子，否则正文引用在附录里查不到。"""
+    if not quotes or not single:
+        return
+    inventory = {(q.get("file"), _norm_quote(q.get("text")))
+                 for q in quotes.get("quotes") or []}
+    missing = []
+    for a in single:
+        fname = a.get("file")
+        for q in a.get("quotes") or []:
+            if (fname, _norm_quote(q.get("text"))) not in inventory:
+                missing.append(f"{fname}「{(q.get('text') or '')[:20]}」")
+    if missing:
+        report["fail"].append(
+            f"quotes: {len(missing)} 条单篇引用不在引用清单中（如 {missing[0]}）")
+    else:
+        report["pass"].append("quotes: 单篇引用与引用清单一致")
 
 
 def check_discipline_evidence(plan, discipline, min_ev, report):
@@ -311,29 +395,50 @@ def check_discipline_evidence(plan, discipline, min_ev, report):
             report["fail"].append(f"discipline: {did} 证据 {n_ev} < {min_ev}")
         else:
             report["pass"].append(f"discipline: {did} 证据 {n_ev} 条达标")
+    required = _sd("discipline.eight_elements", [
+        "core_questions", "concepts", "methods", "evidence", "analysis",
+        "counter_evidence", "confidence", "references"])
     for d in discipline:
         dname = d.get("discipline", "")
-        required = ["core_questions", "concepts", "methods", "evidence", "analysis",
-                    "counter_evidence", "confidence", "references"]
         miss = [k for k in required if k not in d]
+        empty = [k for k in required if k in d and _empty_value(d[k])]
         if miss:
             report["fail"].append(f"discipline: {dname} 缺八要素字段 {miss}")
+        if empty:
+            report["fail"].append(f"discipline: {dname} 八要素为空 {empty}")
+        for idx, ev in enumerate(d.get("evidence") or [], 1):
+            if (not isinstance(ev, dict) or not ev.get("quote")
+                    or not ev.get("file") or not ev.get("position")):
+                report["fail"].append(
+                    f"discipline: {dname} 证据第 {idx} 条缺 quote/file/position")
 
 
-def check_references_verified(discipline, plan, report, verify_on=True):
+def check_references_verified(discipline, plan, report, verify_on=True, offline=False):
     if not discipline:
         return
     core = set(plan.get("core_disciplines", [])) if plan else set()
     unverified = []
+    total_refs = 0
     # 逐个核心学科判定：只看未核验总数，会掩盖某个核心学科一条都没核验的情形
     for d in discipline:
         did = d.get("discipline", "")
         is_core = did in core or d.get("name") in core
-        refs = d.get("references", [])
+        refs = d.get("references", []) or []
+        if is_core and not refs:
+            report["fail"].append(f"references: 核心学科 {did} 未提供文献")
+            continue
         for r in refs:
+            if not isinstance(r, dict):
+                report["fail"].append(f"references: {did} 存在非对象文献条目")
+                continue
+            total_refs += 1
             if not r.get("verified"):
                 unverified.append((did, r.get("title", "")))
-        if is_core and refs and all(not r.get("verified") for r in refs):
+            elif offline and not (r.get("page_or_url") or r.get("url")):
+                report["fail"].append(
+                    f"references: {did} 在离线模式声称已核验，但缺少页码或 URL")
+        if is_core and refs and all(
+                isinstance(r, dict) and not r.get("verified") for r in refs):
             if verify_on:
                 report["fail"].append(
                     f"references: 核心学科 {did} 的 {len(refs)} 条文献全部未核验，"
@@ -346,12 +451,15 @@ def check_references_verified(discipline, plan, report, verify_on=True):
                     "（verify_references 关闭或未联网，只标「未检索，需核验」，不判 fail）"
                 )
     if unverified:
+        did, title = unverified[0]
         report["warn"].append(
-            f"references: {len(unverified)} 条文献未核验（如 {unverified[0] if unverified else ''}），"
+            f"references: {len(unverified)} 条文献未核验（如 {did}「{title}」），"
             "需标注'未检索，需核验'"
         )
-    else:
+    elif total_refs:
         report["pass"].append("references: 文献均标注核验状态")
+    else:
+        report["warn"].append("references: 没有任何文献条目")
 
 
 def check_privacy(manifest, cfg, report):
@@ -371,7 +479,7 @@ def check_privacy(manifest, cfg, report):
         try:
             compiled.append((label, re.compile(pat)))
         except re.error:
-            report["warn"].append(f"privacy: 配置规则「{label}」不是合法正则，未参与校验")
+            report["warn"].append(f"privacy: 配置规则「{label}」无法编译为正则，未参与校验")
     names = [str(n) for n in cfg.get("privacy_names", []) if n]
     addresses = [str(a) for a in cfg.get("privacy_addresses", []) if a]
     leaks = []
@@ -439,14 +547,15 @@ def check_degraded(stats, report):
 
 
 def check_cross_discipline(cross, report):
-    """共识与进一步问题至少各一项，避免空报告通过。"""
+    """共识与进一步问题按 schema 的下限检查，避免空报告通过。"""
     if not cross:
         report["fail"].append("cross: 缺少 cross_discipline.json")
         return
-    for key in ("consensus", "further_questions"):
+    min_list = _sd("cross.min_list", {"consensus": 1, "further_questions": 1})
+    for key, need in min_list.items():
         val = cross.get(key)
-        if not isinstance(val, list) or len(val) < 1:
-            report["fail"].append(f"cross: {key} 为空或缺失（至少 1 项）")
+        if not isinstance(val, list) or len(val) < need:
+            report["fail"].append(f"cross: {key} 为空或不足（至少 {need} 项）")
         else:
             report["pass"].append(f"cross: {key} {len(val)} 项")
     for key in ("disagreement", "blindspots"):
@@ -479,6 +588,8 @@ def check_cross_discipline_multi(cross, report):
     for key in req_fields:
         if key not in cross:
             report["fail"].append(f"cross: {key} 字段缺失")
+        elif key != "synthesis_model" and _empty_value(cross[key]):
+            report["fail"].append(f"cross: {key} 为空")
 
 
 def check_mirror_dialogue_chapter(global_analysis, report):
@@ -563,7 +674,8 @@ def check_html(html_path, report):
         return m.group(1) if m else ""
 
     appendix = "".join(_sec_text(s) for s in ("stats", "keywords", "quotes", "references"))
-    body = "".join(_sec_text(s) for s in ("per-file", "discipline-analysis", "mirror-dialogue"))
+    body = "".join(_sec_text(s) for s in (
+        "summary", "per-file", "discipline-analysis", "mirror-dialogue", "global", "conclusion"))
     appendix_chars = len(re.sub(r"<[^>]+>|\s", "", appendix))
     body_chars = len(re.sub(r"<[^>]+>|\s", "", body))
     if body_chars and appendix_chars / body_chars > 0.5:
@@ -593,6 +705,7 @@ def main():
     min_ev = cfg.get("min_evidence_per_core", 3)
     # 离线时无法核验，allow_network 关闭就自动降为只提示
     verify_on = bool(cfg.get("verify_references", True)) and bool(cfg.get("allow_network", False))
+    offline = not bool(cfg.get("allow_network", False))
 
     data_dir = Path(args.data_dir)
     manifest_path = Path(args.manifest) if args.manifest else (data_dir / "files_manifest.json")
@@ -602,23 +715,27 @@ def main():
     plan = load_json(data_dir / "discipline_plan.json")
     discipline = load_json(data_dir / "discipline_analysis.json")
     manifest = load_json(manifest_path)
+    single = load_json(data_dir / "single_analysis.json")
+    quotes = load_json(data_dir / "quotes.json")
+    global_analysis = load_json(data_dir / "global_analysis.json")
+    cross = load_json(data_dir / "cross_discipline.json")
+    stats = load_json(data_dir / "stats.json")
 
     check_schema(data_dir, report)
-    check_file_coverage(manifest,
-                        load_json(data_dir / "single_analysis.json"), report)
-    check_quotes_localizable(load_json(data_dir / "quotes.json"), report)
+    check_file_coverage(manifest, single, report)
+    check_quotes_localizable(quotes, report)
+    check_quote_inventory(quotes, single, report)
     check_discipline_evidence(plan, discipline, min_ev, report)
-    check_references_verified(discipline, plan, report, verify_on)
+    check_references_verified(discipline, plan, report, verify_on, offline)
     check_privacy(manifest, cfg, report)
     check_manifest_errors(manifest, report)
-    check_degraded(load_json(data_dir / "stats.json"), report)
-    check_cross_discipline(load_json(data_dir / "cross_discipline.json"), report)
-    check_cross_discipline_multi(load_json(data_dir / "cross_discipline.json"), report)
-    check_content_depth(load_json(data_dir / "single_analysis.json"),
-                        discipline,
-                        load_json(data_dir / "global_analysis.json"), report)
-    check_mirror_dialogue_chapter(load_json(data_dir / "global_analysis.json"), report)
-    check_single_mirror_fields(load_json(data_dir / "single_analysis.json"), report)
+    check_duplicate_names(manifest, report)
+    check_degraded(stats, report)
+    check_cross_discipline(cross, report)
+    check_cross_discipline_multi(cross, report)
+    check_content_depth(single, discipline, global_analysis, report)
+    check_mirror_dialogue_chapter(global_analysis, report)
+    check_single_mirror_fields(single, report)
     # 渲染之前还没有页面可查，闸门只看内容
     if not args.gate_only:
         html_path = args.html or str(data_dir / "report.html")
@@ -647,4 +764,8 @@ def main():
 
 
 if __name__ == "__main__":
-    main()
+    try:
+        main()
+    except ValueError as e:
+        print(f"[error] {e}", file=sys.stderr)
+        sys.exit(1)

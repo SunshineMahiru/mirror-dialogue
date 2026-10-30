@@ -128,6 +128,8 @@ class TestGateOnlyExitCode(unittest.TestCase):
             deep_single = [{
                 "file": "a.txt", "title": "a", "date_guess": "",
                 "summary": "镜" * 1200,
+                "quote_analysis": "镜" * 300,
+                "emotion_turning_points": "镜" * 300,
                 "mirror_dialogue": {
                     "addressee": "过去的我", "addressee_trajectory": "我→他",
                     "pronoun_map": [{"pronoun": "我", "referent": "自己", "example": "镜", "position": "1"}],

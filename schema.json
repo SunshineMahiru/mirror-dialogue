@@ -33,7 +33,7 @@
     },
     "cross": {
       "multi_explanations": {"min_count": 8},
-      "required_fields": ["complementary", "limitations_ethics"],
+      "required_fields": ["synthesis_model", "complementary", "limitations_ethics"],
       "min_list": {"consensus": 1, "further_questions": 1}
     }
   },
