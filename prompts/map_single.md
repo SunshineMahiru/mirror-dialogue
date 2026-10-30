@@ -46,7 +46,10 @@
 8. 原文引用（`quotes`，**≥8 条**）：每条必须有 `interpretation`（解读），不得只列
    引用不解读；`position` 标注段落号；`source_guess` 不明写"不明"。
 
-9. 所有推断标注"推断"，证据不足标注"证据不足"。
+9. 关键句（`key_sentences`，可选）：原文逐字、但不在引号或书名号内的关键句；每条有
+   `text` / `position` / `why`，不计入引用总数，也不要与 `quotes` 重复。
+
+10. 所有推断标注"推断"，证据不足标注"证据不足"。
 
 输出 JSON schema：
 ```json
@@ -72,6 +75,7 @@
   },
   "keywords": [{"word": "", "count": 0, "evidence": ""}],
   "quotes": [{"text": "", "position": "", "source_guess": "", "function": "", "interpretation": ""}],
+  "key_sentences": [{"text": "", "position": "", "why": ""}],
   "quote_analysis": "",
   "evidence": [],
   "uncertainty": []
@@ -84,5 +88,6 @@
 2. `mirror_dialogue` 六要素（addressee / pronoun_map / self_naming_change / self_talk /
    unsaid / addressee_trajectory）是否逐项回答，展开 ≥500 字？
 3. `quotes` 是否 ≥8 条、每条有 `interpretation`、`position` 标注段落号？
-4. 每条判断是否落到本篇独有的具体句子/段落，而非「以XX为核心」式模板套话？
-5. 是否存在自相矛盾的判断（前后对同一现象评价相反）？
+4. `key_sentences` 是否逐字来自原文、与 `quotes` 无重复、每条有 `why`？
+5. 每条判断是否落到本篇独有的具体句子/段落，避免「以XX为核心」式模板套话？
+6. 是否存在自相矛盾的判断（前后对同一现象评价相反）？

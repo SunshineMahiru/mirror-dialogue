@@ -337,7 +337,7 @@ python validate.py --data-dir ./output --config ./config.yaml
 
 - [ ] 目录中所有文本文件都已覆盖。
 - [ ] 字数、段落、词频来自脚本，不是模型估算。
-- [ ] 每篇至少 8 条原文引用，每条有 interpretation，可搜索定位。
+- [ ] 每篇至少 8 条原文引用，每条有 interpretation，可搜索定位；关键句另存 `key_sentences`，与 `quotes` 不重复。
 - [ ] 每篇 summary ≥ 1200 中文字符；mirror_dialogue ≥ 500 字兜底 + 六要素全覆盖。
 - [ ] 引用来源不明时标注“不明”，不编造。
 - [ ] 推断处标注“推断”，证据不足处标注“证据不足”。

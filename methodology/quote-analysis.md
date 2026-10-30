@@ -43,3 +43,9 @@
 
 `scripts/quotes.py` 只做：读取标记层的引用候选 → `find_position` 精确定位 →
 计数、密度、来源分布、去重。**不再用启发式判定「什么算引用」**。
+
+## 七、关键句（`key_sentences`）
+
+- 原文逐字、但不在引号或书名号内的句子，归入 `key_sentences`，不计入引用总数。
+- 每条有 `text` / `position` / `why`；`why` 说明它在论证或情感推进中的作用。
+- `key_sentences` 不得与 `quotes` 重复；闸门只校验 `quotes` 与标记层清单一致。

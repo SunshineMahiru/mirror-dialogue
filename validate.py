@@ -165,6 +165,7 @@ DEFAULT_SCHEMA = {
             "summary": {"min_zh_chars": 1200},
             "mirror_dialogue": {"min_zh_chars": 500},
             "quotes": {"min_count": 5, "require_interpretation": True},
+            "key_sentences": {"required_fields": ["text", "position", "why"]},
             "required_mirror_fields": [
                 "addressee", "pronoun_map", "self_naming_change", "self_talk", "unsaid"],
         },
@@ -372,6 +373,35 @@ def check_quote_inventory(quotes, single, report):
             f"quotes: {len(missing)} 条单篇引用不在引用清单中（如 {missing[0]}）")
     else:
         report["pass"].append("quotes: 单篇引用与引用清单一致")
+
+
+def check_key_sentences(single, report):
+    """关键句是可选的逐字摘录，不能与真引用重复。"""
+    if not single:
+        return
+    fields = _sd("single.key_sentences.required_fields", ["text", "position", "why"])
+    checked = 0
+    for a in single:
+        fname = a.get("file", "?")
+        items = a.get("key_sentences")
+        if items is None:
+            continue
+        if not isinstance(items, list):
+            report["fail"].append(f"key_sentences: {fname} 不是数组")
+            continue
+        quote_texts = {_norm_quote(q.get("text")) for q in a.get("quotes") or []}
+        for idx, item in enumerate(items, 1):
+            if not isinstance(item, dict):
+                report["fail"].append(f"key_sentences: {fname} 第 {idx} 条不是对象")
+                continue
+            miss = [k for k in fields if not item.get(k)]
+            if miss:
+                report["fail"].append(f"key_sentences: {fname} 第 {idx} 条缺 {miss}")
+            if _norm_quote(item.get("text")) in quote_texts:
+                report["fail"].append(f"key_sentences: {fname} 第 {idx} 条与 quotes 重复")
+            checked += 1
+    if checked and not any(x.startswith("key_sentences:") for x in report["fail"]):
+        report["pass"].append(f"key_sentences: {checked} 条关键句格式正确")
 
 
 def check_discipline_evidence(plan, discipline, min_ev, report):
@@ -722,6 +752,7 @@ def main():
     check_file_coverage(manifest, single, report)
     check_quotes_localizable(quotes, report)
     check_quote_inventory(quotes, single, report)
+    check_key_sentences(single, report)
     check_discipline_evidence(plan, discipline, min_ev, report)
     check_references_verified(discipline, plan, report, verify_on, offline)
     check_privacy(manifest, cfg, report)

@@ -254,6 +254,16 @@
         {% endfor %}
         {% endif %}
 
+        {% if a.key_sentences %}
+        <h4>关键句（非引用）</h4>
+        <ul class="note">
+        {% for k in a.key_sentences %}
+          <li>「{{ k.text }}」<span class="src">—— {{ a.file }} · {{ k.position }}</span>
+          {% if k.why %}<div class="prose note">{{ k.why }}</div>{% endif %}</li>
+        {% endfor %}
+        </ul>
+        {% endif %}
+
         {% if a.uncertainty %}
         <h4>不确定性</h4>
         <ul class="note">{% for u in a.uncertainty %}<li>{{ u }}</li>{% endfor %}</ul>

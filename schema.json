@@ -6,6 +6,7 @@
       "summary": {"min_zh_chars": 1200, "note": "四点缺一不可，见 methodology/depth.md"},
       "mirror_dialogue": {"min_zh_chars": 500, "note": "六要素全覆盖为主，字数兜底"},
       "quotes": {"min_count": 5, "require_interpretation": true},
+      "key_sentences": {"required_fields": ["text", "position", "why"]},
       "quote_analysis": {"min_zh_chars": 300},
       "emotion_turning_points": {"min_zh_chars": 300},
       "required_mirror_fields": [
