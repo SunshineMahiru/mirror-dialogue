@@ -10,8 +10,25 @@ venv/
 env/
 ENV/
 
+# ===== 输入材料（含隐私，不入库）=====
+input/
+input_*/
+materials/
+material/
+corpus/
+texts/
+sources/
+
+# ===== 本地知识库用户材料（仅保留说明与模板）=====
+knowledge/references/*
+!knowledge/references/README.md
+!knowledge/references/REFERENCES_TEMPLATE.md
+
 # ===== 分析产物与本地数据（含隐私，可再生产，不入库）=====
 output/
+output-*/
+output_*/
+reports/
 
 # ===== 第三方参考源码（仅本地学习用，各有独立 license）=====
 reference-projects/
