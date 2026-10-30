@@ -321,7 +321,8 @@
     <div class="card">
       <p><strong>核心透镜：</strong>{% for did in discipline_plan.core_disciplines %}<span class="badge core">{{ did }}</span> {% endfor %}</p>
       <p><strong>辅助透镜：</strong>{% for did in discipline_plan.secondary_disciplines %}<span class="badge secondary">{{ did }}</span> {% endfor %}</p>
-      <p><strong>低相关（未启用）：</strong>{% for did in discipline_plan.excluded_disciplines %}<span class="badge excluded">{{ did }}</span> {% endfor %}</p>
+      <p><strong>低相关（未启用）：</strong>
+      {% for did in discipline_plan.excluded_disciplines %}<span class="badge excluded">{{ did }}</span>{% if discipline_plan.reasons and discipline_plan.reasons.get(did) %}<span class="tag">（{{ discipline_plan.reasons.get(did) }}）</span>{% endif %} {% endfor %}</p>
     </div>
     {% endif %}
     {% if discipline %}
@@ -483,9 +484,6 @@
   <!-- ============ 7. 结语与总评 ============ -->
   <section id="conclusion" class="card">
     <h2>结语与总评</h2>
-    {% if global and global.summary %}
-    <div class="prose">{{ global.summary }}</div>
-    {% endif %}
     {% if global and global.limitations %}
     <h3>局限与不确定性</h3>
     <ul class="note">{% for l in global.limitations %}<li>{{ l }}</li>{% endfor %}</ul>
@@ -543,8 +541,8 @@
     {% if timeline %}
     <h3>时间线</h3>
     <p class="note">时间范围：{{ timeline.date_range | join(' ~ ') or '未识别' }}；
-       写作时间倾向：{{ timeline.time_slot_distribution }}；
-       季节：{{ timeline.season_distribution }}</p>
+       写作时间倾向：{% if timeline.time_slot_distribution is mapping %}{% for k, v in timeline.time_slot_distribution.items() %}{{ k }} {{ v }}{% if not loop.last %}、{% endif %}{% endfor %}{% else %}未识别{% endif %}；
+       季节：{% if timeline.season_distribution is mapping %}{% for k, v in timeline.season_distribution.items() %}{{ k }} {{ v }}{% if not loop.last %}、{% endif %}{% endfor %}{% else %}未识别{% endif %}</p>
     {% if timeline.method %}
     <p class="note">情感曲线方法：{{ timeline.method.sentiment }}。<br>
        局限：{{ timeline.method.limitation }}</p>
@@ -600,7 +598,7 @@
     <p class="note">引用总数（去噪后）：{{ quotes.total_quotes }}；
        强调引号（不计入引用）：{{ quotes.total_emphasis_quotes if quotes.total_emphasis_quotes is defined else 0 }}；
        引用密度：{{ quotes.density }}；
-       来源分布：{{ quotes.source_distribution }}</p>
+       来源分布：{% if quotes.source_distribution is mapping %}{% for k, v in quotes.source_distribution.items() %}{{ k }} {{ v }}{% if not loop.last %}、{% endif %}{% endfor %}{% else %}不明{% endif %}</p>
     {% if quotes.method %}
     <p class="note">判定规则：{{ quotes.method.judgement }}</p>
     {% endif %}
@@ -626,7 +624,23 @@
   <!-- ============ 11. 附录·参考文献 ============ -->
   <section id="references" class="card">
     <h2>附录·参考文献（含核验状态）</h2>
+    {% if discipline %}
+    <h3>学科文献</h3>
+    <table>
+      <thead><tr><th>学科</th><th>作者</th><th>标题</th><th>年份</th><th>页码或 URL</th><th>核验</th></tr></thead>
+      <tbody>
+      {% for d in discipline %}
+        {% for r in d.references %}
+        <tr><td>{{ d.name or d.discipline }}</td><td>{{ r.author }}</td><td>{{ r.title }}</td>
+        <td>{{ r.year }}</td><td>{{ r.page_or_url or r.url or "—" }}</td>
+        <td>{{ '已核验' if r.verified else '未核验' }}</td></tr>
+        {% endfor %}
+      {% endfor %}
+      </tbody>
+    </table>
+    {% endif %}
     {% if knowledge and knowledge.records %}
+    <h3>概念来源</h3>
     <table>
       <thead><tr><th>学科</th><th>概念</th><th>来源</th><th>核验</th></tr></thead>
       <tbody>
@@ -637,7 +651,7 @@
       </tbody>
     </table>
     {% else %}
-      <p class="note">暂无参考文献记录（knowledge_sources.json）</p>
+      <p class="note">暂无概念来源记录（knowledge_sources.json）</p>
     {% endif %}
   </section>
 

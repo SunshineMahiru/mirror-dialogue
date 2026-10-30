@@ -1,6 +1,7 @@
 import argparse
 import json
 import sys
+from datetime import datetime
 from pathlib import Path
 
 from jinja2 import Environment, FileSystemLoader, select_autoescape
@@ -21,6 +22,7 @@ def load_json(path):
 def build_context(data_dir):
     d = Path(data_dir)
     ctx = {
+        "generated_at": datetime.now().astimezone().strftime("%Y-%m-%d %H:%M %z"),
         "stats": load_json(d / "stats.json"),
         "keywords": load_json(d / "keywords.json"),
         "ngrams": load_json(d / "ngrams.json"),

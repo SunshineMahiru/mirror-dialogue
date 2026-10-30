@@ -30,6 +30,11 @@ def apply_always(core, secondary, excluded, disciplines, reasons):
         reasons.setdefault(did, "配置标记为始终启用（统计基础学科）")
 
 
+def fill_excluded_reasons(reasons, excluded):
+    for did in excluded:
+        reasons.setdefault(did, "未触及该学科的核心问题")
+
+
 def feature_text(manifest, stats, keywords, quotes, timeline):
     """把可检索的文本拼在一起。
 
@@ -172,6 +177,7 @@ def main():
         reasons = dict(ap_plan.get("reasons", {}))
         llm_evidence = dict(ap_plan.get("evidence", {}))
         apply_always(core, secondary, excluded, disciplines, reasons)
+        fill_excluded_reasons(reasons, excluded)
         hit_map = evidence_hits_from_markup(manifest, disciplines)
         plan = {
             "core_disciplines": core,
@@ -199,6 +205,7 @@ def main():
             for did in core
         }
         apply_always(core, secondary, excluded, disciplines, reasons)
+        fill_excluded_reasons(reasons, excluded)
         plan = {
             "core_disciplines": core,
             "secondary_disciplines": secondary,
