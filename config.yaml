@@ -36,7 +36,7 @@ local_knowledge_dir: "./knowledge/references"
 supported_extensions: [".txt", ".md", ".doc", ".docx"]
 strip_frontmatter: true   # 去除 YAML/TOML frontmatter
 strip_html_tags: true     # 去除 HTML 标签
-strip_page_numbers: true  # 去除孤立页码（如 "第 3 页 / 4" 或纯数字行）
+strip_page_numbers: true  # 去除孤立页码（只认「第 3 页 / 4」这类页码行，纯数字行保留）
 collapse_blank_lines: true
 
 # ---- 统计参数 ----

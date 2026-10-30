@@ -12,13 +12,14 @@ except ImportError:
 
 DEFAULT_EXTENSIONS = [".txt", ".md", ".doc", ".docx"]
 
-# frontmatter 正则：YAML（---）与 TOML（+++）
-FRONTMATTER_RE = re.compile(
-    r"^\s*(?:---|\+\+\+)\s*\n.*?\n\s*(?:---|\+\+\+)\s*\n?",
-    re.DOTALL,
-)
+# frontmatter 只认文件开头的分隔块，且闭合分隔符必须出现在前 40 行内；
+# 正文中间的 --- 是分隔线，不能当作元数据边界
+FRONTMATTER_LIMIT = 40
+
 HTML_TAG_RE = re.compile(r"<[^>]+>")
-PAGE_NUMBER_RE = re.compile(r"^\s*(?:第\s*\d+\s*页(?:\s*/\s*\d+)?|\d+)\s*$")
+
+# 只删真正的页码行；纯数字行可能是年份标题或编号条目，不能删
+PAGE_NUMBER_RE = re.compile(r"^\s*第\s*\d+\s*页(?:\s*/\s*\d+)?\s*$")
 
 
 def load_config(config_path):
@@ -62,12 +63,47 @@ FRONTMATTER_DATE_RE = re.compile(
 )
 
 
+def _looks_like_frontmatter(lines) -> bool:
+    """至少要有 key: value 形式的元数据行，纯正文块不能当 frontmatter 删掉。"""
+    seen = False
+    for line in lines:
+        if not line.strip():
+            continue
+        if not re.match(r"^\s*[\w\u4e00-\u9fff.-]+\s*[:：]", line):
+            return False
+        seen = True
+    return seen
+
+
+def split_frontmatter(text: str):
+    """把文件开头的 frontmatter 与正文分开。
+
+    只接受第一行非空内容为 --- 或 +++ 的写法；闭合分隔符必须在前 40 行内出现，
+    且块内至少有一条 key: value。找不到这些特征时按普通正文处理，避免把
+    分隔线之间的正文整段删掉。
+    """
+    lines = text.splitlines()
+    start = 0
+    while start < len(lines) and not lines[start].strip():
+        start += 1
+    if start >= len(lines) or lines[start].strip() not in ("---", "+++"):
+        return "", text
+    delim = lines[start].strip()
+    limit = min(len(lines), start + FRONTMATTER_LIMIT + 1)
+    for end in range(start + 1, limit):
+        if lines[end].strip() == delim:
+            block = lines[start + 1:end]
+            if not _looks_like_frontmatter(block):
+                return "", text
+            return "\n".join(block), "\n".join(lines[end + 1:])
+    return "", text
+
+
 def extract_frontmatter_date(text: str) -> str:
     """日期必须在清洗之前取走，frontmatter 随后会被整段删掉。"""
-    m = FRONTMATTER_RE.search(text)
-    if not m:
+    fm, _ = split_frontmatter(text)
+    if not fm:
         return ""
-    fm = m.group(0)
     dm = FRONTMATTER_DATE_RE.search(fm)
     if dm:
         return dm.group(1).strip().strip("\"'")
@@ -76,7 +112,7 @@ def extract_frontmatter_date(text: str) -> str:
 
 def clean_text(text: str, cfg: dict) -> str:
     if cfg.get("strip_frontmatter", True):
-        text = FRONTMATTER_RE.sub("", text, count=1)
+        _, text = split_frontmatter(text)
     if cfg.get("strip_html_tags", True):
         text = HTML_TAG_RE.sub("", text)
     lines = text.splitlines()
@@ -96,6 +132,25 @@ def clean_text(text: str, cfg: dict) -> str:
     return "\n".join(out)
 
 
+def compile_privacy_patterns(cfg: dict):
+    """一次编译隐私正则；写错的正则直接报错，不允许带着未脱敏的正文继续。"""
+    patterns = []
+    for item in cfg.get("privacy_patterns", []):
+        if isinstance(item, dict):
+            label = str(item.get("name") or item.get("pattern") or "")
+            pat = item.get("pattern")
+        else:
+            label = str(item)
+            pat = item
+        if not pat:
+            continue
+        try:
+            patterns.append((label or str(pat), re.compile(str(pat))))
+        except re.error as e:
+            raise ValueError(f"privacy_patterns 正则无效: {pat!r}: {e}") from e
+    return patterns
+
+
 def apply_privacy(text: str, cfg: dict) -> str:
     if not cfg.get("privacy_mode", True):
         return text
@@ -106,17 +161,11 @@ def apply_privacy(text: str, cfg: dict) -> str:
     for addr in cfg.get("privacy_addresses", []):
         if addr:
             text = text.replace(str(addr), "[已脱敏]")
-    for item in cfg.get("privacy_patterns", []):
-        if isinstance(item, dict):
-            pat = item.get("pattern")
-        else:
-            pat = item
-        if not pat:
-            continue
-        try:
-            text = re.sub(pat, "[已脱敏]", text)
-        except re.error:
-            continue
+    patterns = cfg.get("_privacy_patterns")
+    if patterns is None:
+        patterns = compile_privacy_patterns(cfg)
+    for _label, pat in patterns:
+        text = pat.sub("[已脱敏]", text)
     return text
 
 
@@ -129,32 +178,38 @@ def read_text_file(path: Path, cfg: dict):
 
 
 def read_docx(path: Path, cfg: dict):
-    try:
-        from docx import Document  # python-docx
-        doc = Document(str(path))
-        text = "\n".join(p.text for p in doc.paragraphs)
-        return text, "docx"
-    except Exception as e:
-        # 单篇读不出来不该中断整批扫描，把失败原因留在清单里便于回头排查
-        text = f"[读取失败] {path.name}: {e}"
-        return text, "doc-fallback"
+    if path.suffix.lower() == ".doc":
+        raise ValueError("python-docx 不支持旧版 .doc，请另存为 .docx 后重试")
+    from docx import Document  # python-docx
+
+    doc = Document(str(path))
+    text = "\n".join(p.text for p in doc.paragraphs)
+    # Word 分支同样要经过清洗与脱敏，不能只在文本文件上做
+    text = clean_text(text, cfg)
+    text = apply_privacy(text, cfg)
+    return text, "docx"
 
 
-def scan(target_dir: Path, cfg: dict):
-    exts = cfg.get("supported_extensions", DEFAULT_EXTENSIONS)
-    manifest = []
-    for ext in exts:
-        for p in sorted(target_dir.rglob(f"*{ext}")):
-            manifest.append(p)
-    # 扩展名列表里可能有重复项，同一路径只收一次
-    seen = set()
-    unique = []
-    for p in manifest:
-        key = str(p.resolve())
-        if key not in seen:
-            seen.add(key)
-            unique.append(p)
-    return unique
+def scan(target_dir: Path, cfg: dict, exclude_dirs=()):
+    exts = {str(e).lower() for e in cfg.get("supported_extensions", DEFAULT_EXTENSIONS)}
+    excluded = []
+    for d in exclude_dirs:
+        try:
+            excluded.append(Path(d).resolve())
+        except OSError:
+            continue
+    found = []
+    for p in sorted(target_dir.rglob("*")):
+        if not p.is_file() or p.suffix.lower() not in exts:
+            continue
+        try:
+            resolved = p.resolve()
+        except OSError:
+            continue
+        if any(ex in resolved.parents for ex in excluded):
+            continue
+        found.append(p)
+    return found
 
 
 def parse_file(path: Path, cfg: dict):
@@ -190,15 +245,21 @@ def main():
         sys.exit(1)
 
     cfg = load_config(args.config)
+    try:
+        cfg["_privacy_patterns"] = compile_privacy_patterns(cfg)
+    except ValueError as e:
+        print(f"[error] {e}", file=sys.stderr)
+        sys.exit(1)
     out_dir = Path(args.out)
     out_dir.mkdir(parents=True, exist_ok=True)
 
-    files = scan(target, cfg)
+    files = scan(target, cfg, exclude_dirs=[out_dir])
     manifest = {"target_dir": str(target), "files": []}
     for p in files:
         try:
             manifest["files"].append(parse_file(p, cfg))
         except Exception as e:
+            print(f"[warn] 读取失败: {p} ({e})", file=sys.stderr)
             manifest["files"].append(
                 {"file": str(p), "name": p.name, "ext": p.suffix.lower(),
                  "encoding": "error", "content": "", "error": str(e)}
@@ -208,8 +269,9 @@ def main():
     out_path.write_text(
         json.dumps(manifest, ensure_ascii=False, indent=2), encoding="utf-8"
     )
-    print(f"[ok] 已解析 {len(files)} 个文件 -> {out_path}")
-    print(json.dumps({"total_files": len(files)}, ensure_ascii=False))
+    ok = sum(1 for f in manifest["files"] if not f.get("error"))
+    print(f"[ok] 已解析 {ok}/{len(files)} 个文件 -> {out_path}")
+    print(json.dumps({"total_files": len(files), "parsed": ok}, ensure_ascii=False))
 
 
 if __name__ == "__main__":
