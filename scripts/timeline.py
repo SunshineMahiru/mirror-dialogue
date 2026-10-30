@@ -12,8 +12,8 @@ except ImportError:
 
 
 DATE_PATTERNS = [
-    (re.compile(r"(\d{4})[-/年](\d{1,2})[-/月](\d{1,2})日?"), "full"),
-    (re.compile(r"(\d{4})[-/年](\d{1,2})月?"), "year_month"),
+    (re.compile(r"(\d{4})[-/.年](\d{1,2})[-/.月](\d{1,2})日?"), "full"),
+    (re.compile(r"(\d{4})[-/.年](\d{1,2})月?"), "year_month"),
     (re.compile(r"(\d{1,2})月(\d{1,2})日"), "month_day"),
     (re.compile(r"(\d{1,2})[-/](\d{1,2})"), "month_day_num"),
 ]
@@ -31,54 +31,114 @@ NEGATION = {"不", "没", "无", "没有"}
 AMPLIFIER = {"很", "非常", "极其", "特别", "太", "十分", "格外"}
 DIMINISHER = {"有点", "稍微", "略", "些微", "一点点"}
 
+# 长词优先，避免「疲惫不堪」再被「疲惫」重复计一次
+POSITIVE_RE = re.compile(
+    "|".join(sorted(map(re.escape, POSITIVE_WORDS), key=len, reverse=True))
+)
+NEGATIVE_RE = re.compile(
+    "|".join(sorted(map(re.escape, NEGATIVE_WORDS), key=len, reverse=True))
+)
+
 TIME_SLOTS = {
-    "清晨": ["清晨", "凌晨", "早上", "早晨", "日出"],
+    "清晨": ["清晨", "早上", "早晨", "日出"],
     "上午": ["上午"],
     "下午": ["下午", "午后"],
     "傍晚": ["傍晚", "黄昏"],
     "深夜": ["深夜", "凌晨", "半夜", "夜里", "夜晚", "夜深"],
 }
+# 只用多字词，避免「青春」「夏令营」被当成季节
 SEASONS = {
-    "春": ["春", "三月", "四月", "五月"],
-    "夏": ["夏", "六月", "七月", "八月", "炎热"],
-    "秋": ["秋", "九月", "十月", "十一月"],
-    "冬": ["冬", "十二月", "一月", "二月", "寒冷", "雪"],
+    "春": ["春天", "春季", "春日", "初春", "暮春", "三月", "四月", "五月"],
+    "夏": ["夏天", "夏季", "夏日", "初夏", "盛夏", "六月", "七月", "八月", "炎热"],
+    "秋": ["秋天", "秋季", "秋日", "初秋", "深秋", "九月", "十月", "十一月"],
+    "冬": ["冬天", "冬季", "冬日", "初冬", "寒冬", "十二月", "一月", "二月",
+           "寒冷", "下雪", "大雪", "雪花", "积雪"],
 }
+# 长词优先，避免「十一月」再被「一月」算成冬季
+SEASON_KEYWORD_TO_SEASON = {kw: name for name, kws in SEASONS.items() for kw in kws}
+SEASON_RE = re.compile(
+    "|".join(sorted(map(re.escape, SEASON_KEYWORD_TO_SEASON), key=len, reverse=True))
+)
+
+
+def normalize_date(value: str) -> str:
+    """把 frontmatter 里的日期压成 YYYY-MM 或 YYYY-MM-DD；无法解析时返回空串。"""
+    m = re.match(r"^\s*(\d{4})[-/.年](\d{1,2})(?:[-/.月](\d{1,2}))?", str(value))
+    if not m:
+        return ""
+    month = int(m.group(2))
+    day = int(m.group(3)) if m.group(3) else None
+    if not 1 <= month <= 12:
+        return ""
+    if day is not None and not 1 <= day <= 31:
+        return ""
+    return f"{m.group(1)}-{month:02d}" + (f"-{day:02d}" if day else "")
+
+
+def date_sort_key(value: str):
+    try:
+        nums = [int(p) for p in value.split("-")]
+    except ValueError:
+        return (9999, 12, 31)
+    if len(nums) == 3:
+        return tuple(nums)
+    if len(nums) == 2:
+        return (nums[0], nums[1], 0)
+    return (9999, 12, 31)
 
 
 def extract_date(text):
+    """取正文里出现最早的那个日期；模式优先级只用于同一位置的取舍。"""
+    best = None
     for pat, kind in DATE_PATTERNS:
         m = pat.search(text)
-        if m:
-            if kind == "full":
-                y, mo, d = m.group(1), int(m.group(2)), int(m.group(3))
-                return f"{y}-{mo:02d}-{d:02d}"
-            if kind == "year_month":
-                return f"{m.group(1)}-{int(m.group(2)):02d}"
-            if kind in ("month_day", "month_day_num"):
-                return f"{int(m.group(1)):02d}-{int(m.group(2)):02d}"
+        if m and (best is None or m.start() < best[0].start()):
+            best = (m, kind)
+    if best is None:
+        return ""
+    m, kind = best
+    if kind == "full":
+        y, mo, d = m.group(1), int(m.group(2)), int(m.group(3))
+        return f"{y}-{mo:02d}-{d:02d}"
+    if kind == "year_month":
+        return f"{m.group(1)}-{int(m.group(2)):02d}"
+    if kind in ("month_day", "month_day_num"):
+        return f"{int(m.group(1)):02d}-{int(m.group(2)):02d}"
     return ""
 
 
-def sentiment_score(text):
+def _sentiment_hits(text, pattern, polarity):
     score = 0.0
     hits = 0
-    for w in POSITIVE_WORDS:
-        score += text.count(w)
-        hits += text.count(w)
-    for w in NEGATIVE_WORDS:
-        score -= text.count(w)
-        hits += text.count(w)
+    for m in pattern.finditer(text):
+        # 否定词只回看 4 个字，避免把上一句的否定带到本句
+        ctx = text[max(0, m.start() - 4):m.start()]
+        factor = 1.0
+        if any(n in ctx for n in NEGATION):
+            factor = -1.0
+        elif any(a in ctx for a in AMPLIFIER):
+            factor = 1.5
+        elif any(d in ctx for d in DIMINISHER):
+            factor = 0.7
+        score += polarity * factor
+        hits += 1
+    return score, hits
+
+
+def sentiment_score(text):
+    pos_score, pos_hits = _sentiment_hits(text, POSITIVE_RE, 1.0)
+    neg_score, neg_hits = _sentiment_hits(text, NEGATIVE_RE, -1.0)
+    hits = pos_hits + neg_hits
     if hits == 0:
-        return 0.0, "中性", []
-    normalized = max(-1.0, min(1.0, score / hits))
+        return 0.0, "中性"
+    normalized = max(-1.0, min(1.0, (pos_score + neg_score) / hits))
     if normalized > 0.15:
         label = "偏正向"
     elif normalized < -0.15:
         label = "偏负向"
     else:
         label = "中性"
-    return round(normalized, 3), label, []
+    return round(normalized, 3), label
 
 
 def detect_time_slot(text):
@@ -91,11 +151,10 @@ def detect_time_slot(text):
 
 def detect_season(text):
     seasons = []
-    for s, kws in SEASONS.items():
-        for kw in kws:
-            if kw in text:
-                seasons.append(s)
-                break
+    for m in SEASON_RE.finditer(text):
+        name = SEASON_KEYWORD_TO_SEASON[m.group(0)]
+        if name not in seasons:
+            seasons.append(name)
     return seasons
 
 
@@ -115,8 +174,8 @@ def main():
     for idx, item in enumerate(manifest["files"]):
         text = item.get("content", "")
         # frontmatter 里的日期是作者自己写的，比正文里随手提到的日期可靠
-        date = item.get("date") or extract_date(text)
-        score, label, _ = sentiment_score(text)
+        date = normalize_date(item.get("date")) or extract_date(text)
+        score, label = sentiment_score(text)
         entries.append({
             "file": item.get("name"),
             "path": item.get("file"),
@@ -129,7 +188,11 @@ def main():
         })
 
     dated = [e for e in entries if e["date_guess"]]
-    date_range = [min(e["date_guess"] for e in dated), max(e["date_guess"] for e in dated)] if dated else []
+    # 只有带年份的日期参与范围比较；月日与年月混排时字符串比较会颠倒
+    year_dated = [e for e in dated if re.match(r"^\d{4}-", e["date_guess"])]
+    year_dated.sort(key=lambda e: date_sort_key(e["date_guess"]))
+    date_range = ([year_dated[0]["date_guess"], year_dated[-1]["date_guess"]]
+                  if year_dated else [])
 
     slot_dist = Counter(e["time_slot"] for e in entries if e["time_slot"])
     season_dist = Counter(s for e in entries for s in e["seasons"])
@@ -145,8 +208,8 @@ def main():
         # 词典法靠词频加减，读不出反讽与否定语境，下游引用这组数字时必须知道它的边界
         "method": {
             "sentiment": "规则词典法（内置正负情绪词典 + 频率归一化到 [-1,1]）",
-            "limitation": "词典规模有限，不区分反讽/否定语境，仅作粗粒度情感倾向，"
-                          "不能替代 LLM 逐句情感解读",
+            "limitation": "词典规模有限，否定只按前置否定词初步判断，不区分反讽，"
+                          "仅作情感倾向参考，不能替代 LLM 逐句情感解读",
             "date_detection": "正则匹配 + frontmatter date 字段优先",
         },
     }

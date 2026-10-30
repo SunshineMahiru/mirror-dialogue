@@ -46,6 +46,7 @@ userdict_file: ""         # jieba 自定义词典（留空则跳过）
 tfidf_top_n: 50           # TF-IDF 关键词取前 N
 ngram_range: [2, 3]       # n-gram 范围
 cooccurrence_window: 8    # 共现窗口（字符/词个数）
+cooccurrence_top_n: 200   # 共现对只保留前 N 条，避免产物随文本量无限增大
 top_keywords_n: 20        # 高频词取前 N
 
 # ---- 引用抽取 ----

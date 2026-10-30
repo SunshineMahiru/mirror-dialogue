@@ -80,8 +80,13 @@ BUILTIN_STOPWORDS = {
 
 CJK_RE = re.compile(r"[\u4e00-\u9fff]")
 ENWORD_RE = re.compile(r"[A-Za-z]+")
-PUNCT_RE = re.compile(r"[，。！？；：、“”‘’（）《》〈〉,.!?;:'\"()\[\]{}<>…—\-…·\s]")
+PUNCT_RE = re.compile(r"[，。！？；：、“”‘’（）《》〈〉,.!?;:'\"()\[\]{}<>…—\-·\s]")
 SENT_SPLIT_RE = re.compile(r"[。！？!?；;\n]")
+
+
+def _keep_token(word: str) -> bool:
+    """单字只保留汉字；单个拉丁字母没有检索价值。"""
+    return len(word) > 1 or bool(CJK_RE.match(word))
 
 
 def load_config(cfg_path):
@@ -92,6 +97,7 @@ def load_config(cfg_path):
         "tfidf_top_n": 50,
         "ngram_range": [2, 3],
         "cooccurrence_window": 8,
+        "cooccurrence_top_n": 200,
         "top_keywords_n": 30,
     }
     if cfg_path and Path(cfg_path).exists() and yaml is not None:
@@ -144,10 +150,10 @@ def base_stats(text: str, cpm: int):
 def tokenize(text: str, sw: set):
     """不做词性过滤的切分，留给 n-gram、共现与纯词频使用。"""
     if JIEBA_OK:
-        tokens = [w for w in jieba.cut(text) if w.strip()]
-        return [w for w in tokens if w not in sw and len(w.strip()) > 1]
+        tokens = [w.strip() for w in jieba.cut(text) if w.strip()]
+        return [w for w in tokens if w not in sw and _keep_token(w)]
     tokens = re.findall(r"[\u4e00-\u9fff]|[A-Za-z]+", text)
-    return [w for w in tokens if w not in sw]
+    return [w for w in tokens if w not in sw and _keep_token(w)]
 
 
 def tokenize_pos(text: str, sw: set):
@@ -160,16 +166,16 @@ def tokenize_pos(text: str, sw: set):
                 continue
             if flag not in KEEP_POS:
                 continue
-            if len(w) <= 1:
+            if not _keep_token(w):
                 continue
             tokens.append(w)
         return tokens
     # 没有 posseg 时词性过滤失效，只能退回按长度过滤
     if JIEBA_OK:
-        tokens = [w for w in jieba.cut(text) if w.strip()]
-        return [w for w in tokens if w not in sw and len(w.strip()) > 1]
+        tokens = [w.strip() for w in jieba.cut(text) if w.strip()]
+        return [w for w in tokens if w not in sw and _keep_token(w)]
     tokens = re.findall(r"[\u4e00-\u9fff]|[A-Za-z]+", text)
-    return [w for w in tokens if w not in sw and len(w.strip()) > 1]
+    return [w for w in tokens if w not in sw and _keep_token(w)]
 
 
 def word_frequency(tokens):
@@ -181,10 +187,19 @@ def word_frequency(tokens):
 def attach_evidence(kw_list, sentences):
     for kw in kw_list:
         ev = ""
+        word = kw["word"]
         for s in sentences:
-            if kw["word"] in s:
-                ev = s[:60]
-                break
+            pos = s.find(word)
+            if pos < 0:
+                continue
+            # 以关键词为中心截取，示例句必须真的包含这个词
+            start = max(0, min(pos - 20, len(s) - 60))
+            ev = s[start:start + 60]
+            if start:
+                ev = "…" + ev
+            if start + 60 < len(s):
+                ev = ev + "…"
+            break
         kw["evidence"] = ev
     return kw_list
 
@@ -218,7 +233,7 @@ def ngrams(tokens, n):
     return Counter(tuple(tokens[i:i + n]) for i in range(len(tokens) - n + 1))
 
 
-def cooccurrence(texts, sw, window):
+def cooccurrence(texts, sw, window, top_n):
     pair_count = Counter()
     for text in texts:
         toks = tokenize(text, sw)
@@ -227,7 +242,7 @@ def cooccurrence(texts, sw, window):
                 a, b = toks[i], toks[j]
                 if a != b:
                     pair_count[(min(a, b), max(a, b))] += 1
-    return [{"pair": list(p), "count": c} for p, c in pair_count.most_common()]
+    return [{"pair": list(p), "count": c} for p, c in pair_count.most_common(top_n)]
 
 
 def main():
@@ -292,7 +307,8 @@ def main():
             {"ngram": list(k), "count": v} for k, v in trigram_c.most_common(30)
         ]
 
-    cooc = cooccurrence(all_texts, sw, cfg.get("cooccurrence_window", 8))
+    cooc = cooccurrence(all_texts, sw, cfg.get("cooccurrence_window", 8),
+                        cfg.get("cooccurrence_top_n", 200))
 
     global_counter = Counter()
     global_pos_counter = Counter()
