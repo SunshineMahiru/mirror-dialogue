@@ -79,6 +79,9 @@ python run.py --target-dir "/path/to/your/texts" --run-llm-check --skip-scripts
 python -m unittest discover tests
 ```
 
+Run the tests with the interpreter where `pip install -r requirements.txt` was executed;
+the tests import the scripts and their required packages directly.
+
 ## Project Structure
 
 ```

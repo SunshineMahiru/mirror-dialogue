@@ -121,6 +121,7 @@ class TestGateOnlyExitCode(unittest.TestCase):
                  "--gate-only"],
                 capture_output=True, text=True)
             self.assertEqual(r.returncode, 1, "浅产物应被闸门拦截（exit 1）")
+            self.assertIn("depth:", r.stdout, "浅产物应给出 depth 失败项")
 
     def test_gate_passes_deep_output(self):
         # 单篇内容达标后，闸门不应再报 depth 与字段缺失
@@ -147,6 +148,8 @@ class TestGateOnlyExitCode(unittest.TestCase):
                  "--gate-only"],
                 capture_output=True, text=True)
             # 其余 JSON 缺失仍会 exit 1，这条用例只关心 depth 与字段两类 fail
+            self.assertIn("validation_report.json", r.stdout, "校验进程应跑完并写出报告")
+            self.assertNotIn("Traceback", r.stderr, "校验不应以未捕获异常结束")
             self.assertNotIn("depth:", r.stdout + r.stderr, "深度达标后不应再有 depth fail")
             self.assertNotIn("mirror_dialogue: a.txt 缺字段", r.stdout + r.stderr)
 

@@ -79,6 +79,8 @@ python run.py --target-dir "/path/to/你的文本目录" --run-llm-check --skip-
 python -m unittest discover tests
 ```
 
+请在执行过 `pip install -r requirements.txt` 的解释器下运行；测试会直接导入脚本及其必需依赖。
+
 ## 目录结构
 
 ```
