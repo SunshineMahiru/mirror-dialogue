@@ -177,5 +177,29 @@ class TestQuoteInventory(unittest.TestCase):
         self.assertTrue(any("不在引用清单中" in f for f in r["fail"]))
 
 
+class TestKeySentences(unittest.TestCase):
+    def test_valid_passes(self):
+        r = new_report()
+        single = [{"file": "a.txt", "quotes": [],
+                   "key_sentences": [{"text": "关键句", "position": "第1段", "why": "作用"}]}]
+        V.check_key_sentences(single, r)
+        self.assertFalse(r["fail"])
+
+    def test_missing_field_fails(self):
+        r = new_report()
+        single = [{"file": "a.txt", "quotes": [],
+                   "key_sentences": [{"text": "关键句", "position": "第1段"}]}]
+        V.check_key_sentences(single, r)
+        self.assertTrue(any("缺" in f for f in r["fail"]))
+
+    def test_duplicate_with_quotes_fails(self):
+        r = new_report()
+        single = [{"file": "a.txt",
+                   "quotes": [{"text": "同一句", "position": "第1段"}],
+                   "key_sentences": [{"text": "同一句", "position": "第1段", "why": "作用"}]}]
+        V.check_key_sentences(single, r)
+        self.assertTrue(any("重复" in f for f in r["fail"]))
+
+
 if __name__ == "__main__":
     unittest.main()
